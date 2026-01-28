@@ -1,0 +1,21 @@
+.view {
+    padding: 1rem;
+}
+
+button {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  
+  button:hover {
+    background: #e5e7eb;
+  }
+  
+  button:active {
+    transform: translateY(1px);
+  }
+  
