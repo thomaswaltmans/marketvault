@@ -1,8 +1,9 @@
 from django.shortcuts import render
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.db import IntegrityError
 from django.db import transaction as db_transaction
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -12,12 +13,9 @@ from django.core.exceptions import ValidationError
 
 import json
 import re
-from openpyxl import load_workbook
 from datetime import datetime, timezone as dt_timezone
 
 from .models import User, Asset, Transaction
-
-from portfolio.services.analytics import growth_payload, allocation_payload
 
 # Create your views here.
 def index(request):
@@ -93,7 +91,7 @@ def transactions(request):
             return JsonResponse({"error": "asset_id is required"}, status=400)
 
         try:
-            asset = Asset.objects.get(id=asset_id)
+            asset = Asset.objects.get(id=asset_id, user=request.user)
         except Asset.DoesNotExist:
             return JsonResponse({"error": "Asset not found"}, status=404)
 
@@ -136,7 +134,7 @@ def transaction(request, transaction_id):
 
         if "asset_id" in data:
             try:
-                transaction.asset = Asset.objects.get(id=data["asset_id"])
+                transaction.asset = Asset.objects.get(id=data["asset_id"], user=request.user)
             except Asset.DoesNotExist:
                 return JsonResponse({"error": "Asset not found"}, status=404)
 
@@ -167,10 +165,14 @@ def assets(request):
     if request.method == "GET":
         query = request.GET.get("q", "").strip()
 
-        assets = Asset.objects.all().order_by("ticker")
+        assets = Asset.objects.filter(user=request.user).order_by("ticker")
 
         if query:
-            assets = assets.filter(ticker__icontains=query) | assets.filter(name__icontains=query)
+            assets = assets.filter(
+                Q(ticker__icontains=query) |
+                Q(name__icontains=query) |
+                Q(data_symbol__icontains=query)
+            )
 
         asset_list = []
         for asset in assets[:50]:
@@ -178,6 +180,7 @@ def assets(request):
                 "id": asset.id,
                 "ticker": asset.ticker,
                 "name": asset.name,
+                "asset_type": asset.asset_type,
                 "exchange": asset.exchange,
                 "currency": asset.currency,
                 "data_symbol": asset.data_symbol,
@@ -194,31 +197,41 @@ def assets(request):
 
         ticker = (data.get("ticker") or "").strip().upper()
         name = (data.get("name") or "").strip()
+        asset_type = (data.get("asset_type") or Asset.AssetType.STOCK).strip().upper()
         exchange = (data.get("exchange") or "").strip()
         currency = (data.get("currency") or "EUR").strip().upper()
         data_symbol = (data.get("data_symbol") or "").strip()
+        valid_types = set(Asset.AssetType.values)
 
         if not ticker:
             return JsonResponse({"error": "ticker is required"}, status=400)
 
         if not data_symbol:
             return JsonResponse({"error": "data_symbol is required"}, status=400)
+        
+        if asset_type not in valid_types:
+            return JsonResponse({"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"}, status=400)
 
         try:
             asset = Asset.objects.create(
+                user=request.user,
                 ticker=ticker,
                 name=name,
+                asset_type=asset_type,
                 exchange=exchange,
                 currency=currency,
                 data_symbol=data_symbol,
             )
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
+        except IntegrityError:
+            return JsonResponse({"error": "Asset already exists for this account"}, status=400)
 
         return JsonResponse({
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
             "data_symbol": asset.data_symbol,
@@ -230,7 +243,7 @@ def assets(request):
 @login_required
 def asset(request, asset_id):
     try:
-        asset = Asset.objects.get(id=asset_id)
+        asset = Asset.objects.get(id=asset_id, user=request.user)
     except Asset.DoesNotExist:
         return JsonResponse({"error": "Asset not found"}, status=404)
 
@@ -240,6 +253,7 @@ def asset(request, asset_id):
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
             "data_symbol": asset.data_symbol,
@@ -257,6 +271,12 @@ def asset(request, asset_id):
 
         if "name" in data:
             asset.name = data["name"].strip()
+        
+        if "asset_type" in data:
+            next_type = data["asset_type"].strip().upper()
+            if next_type not in set(Asset.AssetType.values):
+                return JsonResponse({"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"}, status=400)
+            asset.asset_type = next_type
 
         if "exchange" in data:
             asset.exchange = data["exchange"].strip()
@@ -272,11 +292,14 @@ def asset(request, asset_id):
             asset.save()
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
+        except IntegrityError:
+            return JsonResponse({"error": "Asset already exists for this account"}, status=400)
 
         return JsonResponse({
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
             "data_symbol": asset.data_symbol,
@@ -338,6 +361,37 @@ def profile(request):
         })
 
     return JsonResponse({"error": "GET or PUT required"}, status=405)
+
+
+@csrf_exempt
+@login_required
+def profile_password(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    confirm_password = data.get("confirm_password") or ""
+
+    if not request.user.check_password(current_password):
+        return JsonResponse({"error": "Current password is incorrect"}, status=400)
+
+    if len(new_password) < 8:
+        return JsonResponse({"error": "New password must be at least 8 characters"}, status=400)
+
+    if new_password != confirm_password:
+        return JsonResponse({"error": "New password and confirmation do not match"}, status=400)
+
+    request.user.set_password(new_password)
+    request.user.save()
+    update_session_auth_hash(request, request.user)
+
+    return JsonResponse({"message": "Password updated"})
 
 ### IMPORTING FROM CSV AND HELPER FUNCTIONS
 
@@ -408,6 +462,14 @@ def import_data(request):
     if not (uploaded_file.name or "").lower().endswith(".xlsx"):
         return JsonResponse({"error": "Please upload an .xlsx file"}, status=400)
 
+    try:
+        from openpyxl import load_workbook
+    except ModuleNotFoundError:
+        return JsonResponse(
+            {"error": "Excel import is unavailable because openpyxl is not installed"},
+            status=500,
+        )
+
     workbook = load_workbook(uploaded_file, data_only=True)
     sheet = workbook.active
 
@@ -444,12 +506,14 @@ def import_data(request):
             continue
 
         asset, was_created = Asset.objects.get_or_create(
+            user=request.user,
             data_symbol=data_symbol,
             defaults={
                 "ticker": _derive_ticker(data_symbol),
                 "name": "",
                 "exchange": "",
                 "currency": "EUR",
+                "asset_type": Asset.AssetType.STOCK,
             }
         )
         if was_created:
@@ -486,6 +550,11 @@ def analytics_growth(request):
     if request.method != "GET":
         return JsonResponse({"error": "GET required"}, status=405)
 
+    try:
+        from portfolio.services.analytics import growth_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
     payload = growth_payload(request.user)
     return JsonResponse(payload)
 
@@ -496,5 +565,25 @@ def analytics_allocation(request):
     if request.method != "GET":
         return JsonResponse({"error": "GET required"}, status=405)
 
+    try:
+        from portfolio.services.analytics import allocation_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
     payload = allocation_payload(request.user)
+    return JsonResponse(payload)
+
+
+@csrf_exempt
+@login_required
+def analytics_asset_growth(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+
+    try:
+        from portfolio.services.analytics import asset_growth_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
+    payload = asset_growth_payload(request.user)
     return JsonResponse(payload)

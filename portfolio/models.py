@@ -14,15 +14,19 @@ class Asset(models.Model):
         ETC = "ETC", "ETC"
         CRYPTO = "CRYPTO", "Crypto"
 
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="assets")
     ticker = models.CharField(max_length=20)
     name = models.CharField(max_length=120, blank=True)
     asset_type = models.CharField(max_length=10, choices=AssetType.choices, default=AssetType.STOCK)
     currency = models.CharField(max_length=10, default="EUR")
     exchange = models.CharField(max_length=40, blank=True)
-    data_symbol = models.CharField(max_length=30, unique=True)
+    data_symbol = models.CharField(max_length=30)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["ticker", "exchange"], name="unique_ticker_exchange")]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "ticker", "exchange"], name="unique_user_ticker_exchange"),
+            models.UniqueConstraint(fields=["user", "data_symbol"], name="unique_user_data_symbol"),
+        ]
 
     def __str__(self):
         return f"{self.ticker} ({self.exchange})"

@@ -17,7 +17,9 @@ urlpatterns = [
     path("assets/<int:asset_id>", views.asset, name="asset"), 
 
     path("profile", views.profile, name="profile"),
+    path("profile/password", views.profile_password, name="profile-password"),
 
     path("analytics/growth", views.analytics_growth, name="analytics-growth"),
     path("analytics/allocation", views.analytics_allocation, name="analytics-allocation"),
+    path("analytics/asset-growth", views.analytics_asset_growth, name="analytics-asset-growth"),
 ]

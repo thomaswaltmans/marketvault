@@ -2,10 +2,129 @@
 {% load static %}
 
 {% block body %}
-  <div id="view-dashboard" class="view">
-    <h2>Portfolio Dashboard</h2>
-    <div id="chart-growth" style="width:100%;height:420px;"></div>
-    <div id="chart-allocation" style="width:100%;height:420px;"></div>
+  <div id="view-profile" class="view">
+    <h2>Account</h2>
+    <div class="grid">
+      <div class="card card-overview span-6">
+        <h3>Profile</h3>
+        <div style="margin-bottom: 0.75rem;">
+          <label>Username</label><br>
+          <input id="profile-username" disabled>
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <label>Email</label><br>
+          <input id="profile-email">
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <label>First name</label><br>
+          <input id="profile-first-name">
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <label>Last name</label><br>
+          <input id="profile-last-name">
+        </div>
+        <button id="btn-save-profile">Save profile</button>
+        <div id="profile-status" style="margin-top:0.5rem;"></div>
+      </div>
+
+      <div class="card span-6">
+        <h3>Security</h3>
+        <div style="margin-bottom: 0.75rem;">
+          <label>Current password</label><br>
+          <input id="password-current" type="password">
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <label>New password</label><br>
+          <input id="password-new" type="password">
+        </div>
+        <div style="margin-bottom: 0.75rem;">
+          <label>Confirm new password</label><br>
+          <input id="password-confirm" type="password">
+        </div>
+        <button id="btn-change-password">Change password</button>
+        <div id="password-status" style="margin-top:0.5rem;"></div>
+        <hr>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'logout' %}">Log Out</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-dashboard" class="dashboard">
+    <div class="dashboard-header">
+      <h2>Portfolio Dashboard</h2>
+    </div>
+    <div class="grid">
+      <div class="card card-overview span-6">
+        <h3>Overview</h3>
+        <div class="stats-grid-wrap">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">Portfolio Value</div>
+            <div id="metric-portfolio-value" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Invested</div>
+            <div id="metric-total-invested" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Unrealized P/L</div>
+            <div id="metric-unrealized-pl" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total ROI</div>
+            <div id="metric-total-roi" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">YTD ROI</div>
+            <div id="metric-ytd-roi" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Dividend Yield (TTM)</div>
+            <div id="metric-dividend-yield" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Best Performer</div>
+            <div id="metric-best-performer" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Worst Performer</div>
+            <div id="metric-worst-performer" class="stat-value">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Top Dividend Asset</div>
+            <div id="metric-top-dividend-asset" class="stat-value">-</div>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div class="card card-allocation span-6">
+        <div class="allocation-header">
+          <h3>Allocation</h3>
+          <div class="allocation-toggle">
+            <button id="btn-allocation-assets" class="is-active" type="button">Assets</button>
+            <button id="btn-allocation-types" type="button">Type</button>
+          </div>
+        </div>
+        <div class="allocation-layout">
+          <div id="chart-allocation" class="chart chart-small"></div>
+          <div id="allocation-legend" class="allocation-legend"></div>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <h3>Portfolio Value</h3>
+        <div id="chart-growth" class="chart"></div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card-head-row">
+          <h3>Asset Growth</h3>
+          <select id="asset-growth-select"></select>
+        </div>
+        <div id="chart-asset-growth" class="chart"></div>
+      </div>
+  </div>
   </div>
 
   <div id="view-assets" class="view">
@@ -14,13 +133,18 @@
     <div style="margin-bottom: 1rem;">
       <input id="asset-search" placeholder="Search by ticker, name, or data symbol">
       <button id="btn-asset-search">Search</button>
-      <button id="btn-asset-refresh">Refresh</button>
+      <button id="btn-toggle-asset-create">Create asset</button>
     </div>
   
-    <h3>Create asset</h3>
-    <div style="margin-bottom: 1rem;">
+    <div id="asset-create-panel" style="margin-bottom: 1rem; display:none;">
       <input id="asset-ticker" placeholder="Ticker (e.g. ASML)" />
       <input id="asset-name" placeholder="Name (optional)" />
+      <select id="asset-type">
+        <option value="ETF">ETF</option>
+        <option value="STOCK" selected>Stock</option>
+        <option value="ETC">ETC</option>
+        <option value="CRYPTO">Crypto</option>
+      </select>
       <input id="asset-exchange" placeholder="Exchange (optional, e.g. Euronext)" />
       <input id="asset-currency" placeholder="Currency (default EUR)" />
       <input id="asset-data-symbol" placeholder="Data symbol (e.g. ASML.AS)" />
@@ -28,7 +152,6 @@
       <div id="asset-create-status"></div>
     </div>
   
-    <h3>All assets</h3>
     <div id="assets-list"></div>
   </div>
 
@@ -36,7 +159,7 @@
     <h2>Transactions</h2>
     <div style="margin-bottom: 1rem;">
       <button id="btn-new-transaction">New transaction</button>
-      <button id="btn-refresh-transactions">Refresh</button>
+      <button id="btn-go-import">Import file</button>
     </div>
   
     <div id="transactions-status"></div>
@@ -82,7 +205,7 @@
   
     <div style="margin-bottom: 0.75rem;">
       <label>Timestamp (optional ISO)</label><br>
-      <input id="txn-timestamp" type="date" placeholder="today">
+      <input id="txn-timestamp" type="datetime-local" placeholder="today">
     </div>
   
     <div style="margin-top: 1rem;">
@@ -93,11 +216,46 @@
   </div>
 
   <div id="view-import" class="view">
-    <h2>Load Portfolio from Excel File</h2>
-    <div>Only .xslx files are supported. Columns should include:</div>
-    <div>| data_symbol | txn_type | quantity | unit_price | div_amount | timestamp |</div>
-    <br>
-    <input type="file" id="xlsx" accept=".xlsx">
+    <h2>Load Transactions from Excel File</h2>
+    <div class="import-help">
+      <p>Upload an <code>.xlsx</code> file with one row per transaction.</p>
+      <p>Required columns: <span class="import-columns"><code>data_symbol</code>, <code>txn_type</code>, <code>timestamp</code></span></p>
+      <p><code>txn_type</code> must be one of: <code>BUY</code>, <code>SELL</code>, <code>DIV</code></p>
+      <p>Optional columns: <span class="import-columns"><code>quantity</code>, <code>unit_price</code>, <code>div_amount</code></span></p>
+      <p>Example:</p>
+      <div class="import-example-table">
+        <div class="import-cell import-head">data_symbol</div>
+        <div class="import-cell import-head">txn_type</div>
+        <div class="import-cell import-head">quantity</div>
+        <div class="import-cell import-head">unit_price</div>
+        <div class="import-cell import-head">div_amount</div>
+        <div class="import-cell import-head">timestamp</div>
+
+        <div class="import-cell">IWDA.AS</div>
+        <div class="import-cell">BUY</div>
+        <div class="import-cell">2</div>
+        <div class="import-cell">88.49</div>
+        <div class="import-cell"></div>
+        <div class="import-cell">1704067200</div>
+
+        <div class="import-cell">VWCE.DE</div>
+        <div class="import-cell">BUY</div>
+        <div class="import-cell">1.5</div>
+        <div class="import-cell">103.10</div>
+        <div class="import-cell"></div>
+        <div class="import-cell">1706745600</div>
+
+        <div class="import-cell">VWRL.AS</div>
+        <div class="import-cell">DIV</div>
+        <div class="import-cell"></div>
+        <div class="import-cell"></div>
+        <div class="import-cell">12.34</div>
+        <div class="import-cell">1709251200</div>
+      </div>
+    </div>
+    <input type="file" id="xlsx" accept=".xlsx" hidden>
+    <label for="xlsx" class="btn-file">Choose file</label>
+    <span id="file-name" style="margin-left:8px; opacity:0.8;"></span>
     <button id="btn-import">Import</button>
     <div id="import-status"></div>
   </div>
@@ -105,5 +263,11 @@
 
 {% block script %}
   <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
-  <script src="{% static 'portfolio/script.js' %}"></script>
+  <script src="{% static 'portfolio/js/common.js' %}"></script>
+  <script src="{% static 'portfolio/js/profile.js' %}"></script>
+  <script src="{% static 'portfolio/js/dashboard.js' %}"></script>
+  <script src="{% static 'portfolio/js/assets.js' %}"></script>
+  <script src="{% static 'portfolio/js/transactions.js' %}"></script>
+  <script src="{% static 'portfolio/js/imports.js' %}"></script>
+  <script src="{% static 'portfolio/js/app.js' %}"></script>
 {% endblock %}

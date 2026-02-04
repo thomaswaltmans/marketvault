@@ -16,11 +16,6 @@
           
             <div>
               <ul class="navbar-nav mr-auto">
-                {% if user.is_authenticated %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" id="nav-profile"><strong>{{ user.username }}</strong></a>
-                    </li>
-                {% endif %}
                 <!-- <li class="nav-item">
                   <a class="nav-link" href="{% url 'index' %}" id="all-posts">All Posts</a>
                 </li> -->
@@ -35,10 +30,9 @@
                         <a class="nav-link" href="#" id="nav-transactions">Transactions</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="nav-import">Import</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'logout' %}">Log Out</a>
+                        <a class="nav-link" href="#" id="nav-profile">
+                            {% if user.first_name %}{{ user.first_name }}{% else %}{{ user.username }}{% endif %}
+                        </a>
                     </li>
                 {% else %}
                     <li class="nav-item">
