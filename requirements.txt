@@ -1,0 +1,4 @@
+Django>=5.0,<7.0
+pandas>=2.0
+yfinance>=0.2
+openpyxl>=3.1
