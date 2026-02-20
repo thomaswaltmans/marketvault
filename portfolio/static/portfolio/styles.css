@@ -406,15 +406,31 @@ body{
 .span-4{ grid-column: span 4; }
 
 @media (max-width: 900px){
-  .span-8, .span-6, .span-4{ grid-column: span 12; }
+  .grid{
+    grid-template-columns: 1fr;
+  }
+  .span-12, .span-8, .span-6, .span-4{
+    grid-column: 1 / -1;
+  }
+  .card{
+    min-width: 0;
+  }
   .allocation-layout{
     grid-template-columns: 1fr;
+    height: auto;
+  }
+  .allocation-layout .chart{
+    min-height: 260px;
+    height: 260px;
   }
   .allocation-legend{
     border-left: 0;
     border-top: 1px solid var(--border);
     padding-left: 0;
     padding-top: 8px;
+  }
+  .js-plotly-plot .plotly .modebar{
+    display: none !important;
   }
   .stats-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

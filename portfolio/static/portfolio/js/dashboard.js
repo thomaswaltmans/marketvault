@@ -12,6 +12,14 @@ const ALLOCATION_TYPE_COLORS = {
     CRYPTO: "hsl(270, 54%, 54%)",
 };
 
+function getPlotlyConfig() {
+    return {
+        responsive: true,
+        displayModeBar: !window.matchMedia("(max-width: 900px)").matches,
+        displaylogo: false,
+    };
+}
+
 function view_dashboard() {
     hide_all_views();
     setActiveNav("#nav-dashboard");
@@ -116,7 +124,7 @@ function renderGrowthChart(data) {
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
-    Plotly.react("chart-growth", traces, layout, { responsive: true }).then(() => {
+    Plotly.react("chart-growth", traces, layout, getPlotlyConfig()).then(() => {
         const chartEl = document.getElementById("chart-growth");
         if (!chartEl) return;
 
@@ -260,7 +268,7 @@ function renderAllocationFromData(data) {
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
-    Plotly.react("chart-allocation", [trace], layout, { responsive: true }).then(() => {
+    Plotly.react("chart-allocation", [trace], layout, getPlotlyConfig()).then(() => {
         Plotly.Plots.resize("chart-allocation");
         setTimeout(() => Plotly.Plots.resize("chart-allocation"), 120);
         renderAllocationLegend(labels, values, colors);
@@ -579,7 +587,7 @@ function renderAssetGrowthChart() {
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
-    Plotly.react("chart-asset-growth", traces, layout, { responsive: true }).then(() => {
+    Plotly.react("chart-asset-growth", traces, layout, getPlotlyConfig()).then(() => {
         if (chartEl._assetGrowthRelayoutHandler) {
             chartEl.removeListener("plotly_relayout", chartEl._assetGrowthRelayoutHandler);
         }
