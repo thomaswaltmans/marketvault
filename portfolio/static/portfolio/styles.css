@@ -161,6 +161,15 @@ body{
     font-size: 1rem;
     display: inline-block;
   }
+
+  .sensitive-toggle{
+    font-size: 0.78rem;
+    padding: 5px 8px;
+  }
+
+  .sensitive-toggle span{
+    display: none;
+  }
 }
 
 @media (min-width: 1200px){
@@ -211,6 +220,37 @@ body{
   align-items:center;
   justify-content:space-between;
   margin-bottom: 16px;
+}
+
+.sensitive-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.sensitive-toggle svg{
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  flex: 0 0 auto;
+}
+
+.sensitive-toggle .icon-eye-off{
+  display: none;
+}
+
+.sensitive-toggle.is-hidden .icon-eye{
+  display: none;
+}
+
+.sensitive-toggle.is-hidden .icon-eye-off{
+  display: inline;
 }
 
 .dashboard-header h2,
@@ -425,6 +465,11 @@ body{
   font-size: 1.15rem;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.stat-value.value-hidden{
+  filter: blur(4px);
+  user-select: none;
 }
 
 .metric-positive{ color: var(--positive); }

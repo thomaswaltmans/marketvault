@@ -3,6 +3,9 @@ let allocationViewMode = "assets";
 let allocationRawData = null;
 let allocationToggleInitialized = false;
 let assetGrowthData = null;
+let hideSensitiveValues = false;
+let overviewMetricsSnapshot = null;
+let sensitiveToggleInitialized = false;
 
 const ALLOCATION_TYPE_ORDER = ["ETF", "STOCK", "ETC", "CRYPTO"];
 const ALLOCATION_TYPE_COLORS = {
@@ -11,6 +14,8 @@ const ALLOCATION_TYPE_COLORS = {
     ETC: "hsl(180, 54%, 46%)",
     CRYPTO: "hsl(270, 54%, 54%)",
 };
+const SENSITIVE_MASK_TEXT = "********";
+const SENSITIVE_TOGGLE_STORAGE_KEY = "marketvault.hideSensitiveValues";
 
 function getPlotlyConfig() {
     return {
@@ -25,6 +30,7 @@ function view_dashboard() {
     setActiveNav("#nav-dashboard");
     show("#view-dashboard");
     initializeAllocationToggle();
+    initializeSensitiveToggle();
 
     requestAnimationFrame(() => {
         loadGrowthChartWithRetry();
@@ -110,7 +116,10 @@ function renderGrowthChart(data) {
             },
             rangeslider: { visible: false },
         },
-        yaxis: { title: "Value" },
+        yaxis: {
+            title: hideSensitiveValues ? "" : "Value",
+            showticklabels: !hideSensitiveValues,
+        },
         legend: {
             orientation: "v",
             x: 0,
@@ -294,6 +303,81 @@ function initializeAllocationToggle() {
     allocationToggleInitialized = true;
 }
 
+function initializeSensitiveToggle() {
+    const toggleButton = getElement("#btn-sensitive-toggle");
+    if (!toggleButton) return;
+
+    hideSensitiveValues = readSensitiveToggleState();
+
+    if (!sensitiveToggleInitialized) {
+        toggleButton.addEventListener("click", () => {
+            setSensitiveVisibility(!hideSensitiveValues);
+        });
+        sensitiveToggleInitialized = true;
+    }
+
+    setSensitiveVisibility(hideSensitiveValues, { persist: false });
+}
+
+function setSensitiveVisibility(nextHidden, options = {}) {
+    const { persist = true } = options;
+    hideSensitiveValues = Boolean(nextHidden);
+
+    const toggleButton = getElement("#btn-sensitive-toggle");
+    const toggleLabel = getElement("#sensitive-toggle-label");
+    if (toggleButton) {
+        toggleButton.classList.toggle("is-hidden", hideSensitiveValues);
+        toggleButton.setAttribute("aria-pressed", String(hideSensitiveValues));
+        toggleButton.setAttribute(
+            "aria-label",
+            hideSensitiveValues ? "Show sensitive values" : "Hide sensitive values"
+        );
+    }
+    if (toggleLabel) {
+        toggleLabel.textContent = hideSensitiveValues ? "Show values" : "Hide values";
+    }
+
+    if (persist) {
+        persistSensitiveToggleState(hideSensitiveValues);
+    }
+
+    renderOverviewMetrics();
+    applySensitiveYAxisState();
+}
+
+function readSensitiveToggleState() {
+    try {
+        return localStorage.getItem(SENSITIVE_TOGGLE_STORAGE_KEY) === "1";
+    } catch (error) {
+        return false;
+    }
+}
+
+function persistSensitiveToggleState(isHidden) {
+    try {
+        localStorage.setItem(SENSITIVE_TOGGLE_STORAGE_KEY, isHidden ? "1" : "0");
+    } catch (error) {
+        // Ignore storage failures (private mode, blocked storage, etc.)
+    }
+}
+
+function applySensitiveYAxisState() {
+    if (typeof Plotly === "undefined") return;
+
+    const nextTitle = hideSensitiveValues ? "" : "Value";
+    const showTickLabels = !hideSensitiveValues;
+    const chartIds = ["chart-growth", "chart-asset-growth"];
+
+    chartIds.forEach((chartId) => {
+        const chartEl = document.getElementById(chartId);
+        if (!chartEl || !chartEl.data) return;
+        Plotly.relayout(chartEl, {
+            "yaxis.title.text": nextTitle,
+            "yaxis.showticklabels": showTickLabels,
+        });
+    });
+}
+
 function getAllocationDataset(data, mode) {
     const labels = data.labels || [];
     const values = (data.values || []).map((value) => Number(value) || 0);
@@ -384,15 +468,25 @@ function updateOverviewMetrics(data) {
     const topDividendAsset = data.top_dividend_asset || null;
 
     if (!dates.length || !values.length || !invested.length) {
-        setText("#metric-portfolio-value", "-");
-        setText("#metric-total-invested", "-");
-        setMetricTextWithTone("#metric-unrealized-pl", "-", null);
-        setMetricTextWithTone("#metric-total-roi", "-", null);
-        setMetricTextWithTone("#metric-ytd-roi", "-", null);
-        setMetricTextWithTone("#metric-dividend-yield", "-", null);
-        setMetricTextWithTone("#metric-best-performer", "-", null);
-        setMetricTextWithTone("#metric-worst-performer", "-", null);
-        setMetricTextWithTone("#metric-top-dividend-asset", "-", null);
+        overviewMetricsSnapshot = {
+            portfolioValue: "-",
+            totalInvested: "-",
+            unrealizedPl: "-",
+            unrealizedPlTone: null,
+            totalRoi: "-",
+            totalRoiTone: null,
+            ytdRoi: "-",
+            ytdRoiTone: null,
+            dividendYieldTtm: "-",
+            dividendYieldTtmTone: null,
+            bestPerformer: "-",
+            bestPerformerTone: null,
+            worstPerformer: "-",
+            worstPerformerTone: null,
+            topDividendAsset: "-",
+            topDividendAssetTone: null,
+        };
+        renderOverviewMetrics();
         return;
     }
 
@@ -402,27 +496,67 @@ function updateOverviewMetrics(data) {
     const ytdRoi = computeYtdRoi(dates, values);
     const unrealizedPl = latestValue - latestInvested;
 
-    setText("#metric-portfolio-value", formatCurrency(latestValue));
-    setText("#metric-total-invested", formatCurrency(latestInvested));
-    setMetricTextWithTone("#metric-unrealized-pl", formatSignedCurrency(unrealizedPl), unrealizedPl);
-    setMetricTextWithTone("#metric-total-roi", formatPercent(totalRoi), totalRoi);
-    setMetricTextWithTone("#metric-ytd-roi", formatPercent(ytdRoi), ytdRoi);
-    setMetricTextWithTone("#metric-dividend-yield", formatPercent(dividendYieldTtm), dividendYieldTtm);
+    overviewMetricsSnapshot = {
+        portfolioValue: formatCurrency(latestValue),
+        totalInvested: formatCurrency(latestInvested),
+        unrealizedPl: formatSignedCurrency(unrealizedPl),
+        unrealizedPlTone: unrealizedPl,
+        totalRoi: formatPercent(totalRoi),
+        totalRoiTone: totalRoi,
+        ytdRoi: formatPercent(ytdRoi),
+        ytdRoiTone: ytdRoi,
+        dividendYieldTtm: formatPercent(dividendYieldTtm),
+        dividendYieldTtmTone: dividendYieldTtm,
+        bestPerformer: formatAssetPercentMetric(bestPerformer, "roi_pct"),
+        bestPerformerTone: Number(bestPerformer?.roi_pct),
+        worstPerformer: formatAssetPercentMetric(worstPerformer, "roi_pct"),
+        worstPerformerTone: Number(worstPerformer?.roi_pct),
+        topDividendAsset: formatAssetPercentMetric(topDividendAsset, "dividend_yield_ttm_pct"),
+        topDividendAssetTone: Number(topDividendAsset?.dividend_yield_ttm_pct),
+    };
+
+    renderOverviewMetrics();
+}
+
+function renderOverviewMetrics() {
+    if (!overviewMetricsSnapshot) return;
+
+    setSensitiveMetricText("#metric-portfolio-value", overviewMetricsSnapshot.portfolioValue, hideSensitiveValues);
+    setSensitiveMetricText("#metric-total-invested", overviewMetricsSnapshot.totalInvested, hideSensitiveValues);
+
+    const unrealizedText = hideSensitiveValues ? SENSITIVE_MASK_TEXT : overviewMetricsSnapshot.unrealizedPl;
+    const unrealizedTone = hideSensitiveValues ? null : overviewMetricsSnapshot.unrealizedPlTone;
+    const unrealizedEl = setMetricTextWithTone("#metric-unrealized-pl", unrealizedText, unrealizedTone);
+    if (unrealizedEl) unrealizedEl.classList.toggle("value-hidden", hideSensitiveValues);
+
+    setMetricTextWithTone("#metric-total-roi", overviewMetricsSnapshot.totalRoi, overviewMetricsSnapshot.totalRoiTone);
+    setMetricTextWithTone("#metric-ytd-roi", overviewMetricsSnapshot.ytdRoi, overviewMetricsSnapshot.ytdRoiTone);
+    setMetricTextWithTone(
+        "#metric-dividend-yield",
+        overviewMetricsSnapshot.dividendYieldTtm,
+        overviewMetricsSnapshot.dividendYieldTtmTone
+    );
     setMetricTextWithTone(
         "#metric-best-performer",
-        formatAssetPercentMetric(bestPerformer, "roi_pct"),
-        Number(bestPerformer?.roi_pct)
+        overviewMetricsSnapshot.bestPerformer,
+        overviewMetricsSnapshot.bestPerformerTone
     );
     setMetricTextWithTone(
         "#metric-worst-performer",
-        formatAssetPercentMetric(worstPerformer, "roi_pct"),
-        Number(worstPerformer?.roi_pct)
+        overviewMetricsSnapshot.worstPerformer,
+        overviewMetricsSnapshot.worstPerformerTone
     );
     setMetricTextWithTone(
         "#metric-top-dividend-asset",
-        formatAssetPercentMetric(topDividendAsset, "dividend_yield_ttm_pct"),
-        Number(topDividendAsset?.dividend_yield_ttm_pct)
+        overviewMetricsSnapshot.topDividendAsset,
+        overviewMetricsSnapshot.topDividendAssetTone
     );
+}
+
+function setSensitiveMetricText(selector, text, hidden) {
+    const metricElement = setText(selector, hidden ? SENSITIVE_MASK_TEXT : text);
+    if (!metricElement) return;
+    metricElement.classList.toggle("value-hidden", hidden);
 }
 
 function computeYtdRoi(dates, values) {
@@ -482,17 +616,18 @@ function formatAssetPercentMetric(item, valueKey) {
 }
 
 function setMetricTextWithTone(selector, text, numericValue) {
-    const el = setText(selector, text);
-    if (!el) return;
+    const metricElement = setText(selector, text);
+    if (!metricElement) return null;
 
-    el.classList.remove("metric-positive", "metric-negative", "metric-neutral");
+    metricElement.classList.remove("metric-positive", "metric-negative", "metric-neutral");
 
     if (!Number.isFinite(numericValue) || numericValue === 0) {
-        el.classList.add("metric-neutral");
-        return;
+        metricElement.classList.add("metric-neutral");
+        return metricElement;
     }
 
-    el.classList.add(numericValue > 0 ? "metric-positive" : "metric-negative");
+    metricElement.classList.add(numericValue > 0 ? "metric-positive" : "metric-negative");
+    return metricElement;
 }
 
 async function loadAssetGrowthChartWithRetry(attempt = 1) {
@@ -573,7 +708,10 @@ function renderAssetGrowthChart() {
             },
             rangeslider: { visible: false },
         },
-        yaxis: { title: "Value" },
+        yaxis: {
+            title: hideSensitiveValues ? "" : "Value",
+            showticklabels: !hideSensitiveValues,
+        },
         legend: {
             orientation: "v",
             x: 0,
