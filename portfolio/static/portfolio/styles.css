@@ -455,6 +455,11 @@ body{
     min-height: 260px;
     height: 260px;
   }
+  #chart-growth,
+  #chart-asset-growth{
+    min-height: 250px;
+    height: 250px;
+  }
   .allocation-legend{
     border-left: 0;
     border-top: 1px solid var(--border);
