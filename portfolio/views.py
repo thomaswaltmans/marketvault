@@ -1,29 +1,61 @@
 from django.shortcuts import render
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.db import IntegrityError
 from django.db import transaction as db_transaction
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.utils.dateparse import parse_datetime
 from django.core.exceptions import ValidationError
 
 import json
+import logging
 import re
 from datetime import datetime, timezone as dt_timezone
 
 from .models import User, Asset, Transaction
 
+logger = logging.getLogger(__name__)
+
+try:
+    from django_ratelimit.decorators import ratelimit
+except ModuleNotFoundError:
+    # Local fallback if dependency is not installed yet.
+    def ratelimit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 # Create your views here.
+@ensure_csrf_cookie
 def index(request):
     return render(request, "portfolio/index.html")
 
+
+def _client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
 # Login views
+@ratelimit(key="ip", rate="20/m", method="POST", block=False)
+@ratelimit(key="post:username", rate="8/m", method="POST", block=False)
 def login_view(request):
     if request.method == "POST":
+        if getattr(request, "limited", False):
+            logger.warning(
+                "Rate limit hit on login_view ip=%s username=%s",
+                _client_ip(request),
+                request.POST.get("username", ""),
+            )
+            return render(request, "portfolio/login.html", {
+                "message": "Too many login attempts. Please wait a minute and try again."
+            }, status=429)
 
         # Attempt to sign user in
         username = request.POST["username"]
@@ -45,8 +77,22 @@ def logout_view(request):
     logout(request)
     return HttpResponseRedirect(reverse("index"))
 
+@ratelimit(key="ip", rate="10/m", method="POST", block=False)
 def register(request):
+    if not settings.REGISTRATION_ENABLED:
+        return HttpResponse(status=404)
+
     if request.method == "POST":
+        if getattr(request, "limited", False):
+            logger.warning(
+                "Rate limit hit on register ip=%s username=%s",
+                _client_ip(request),
+                request.POST.get("username", ""),
+            )
+            return render(request, "portfolio/register.html", {
+                "message": "Too many signup attempts. Please wait and try again."
+            }, status=429)
+
         username = request.POST["username"]
         email = request.POST["email"]
 
@@ -72,7 +118,6 @@ def register(request):
         return render(request, "portfolio/register.html")
     
 # Transaction views
-@csrf_exempt
 @login_required
 def transactions(request):
     if request.method == "GET":
@@ -114,7 +159,6 @@ def transactions(request):
 
         return JsonResponse(transaction.serialize(), status=201)
 
-@csrf_exempt
 @login_required
 def transaction(request, transaction_id):
     try:
@@ -158,7 +202,6 @@ def transaction(request, transaction_id):
     return JsonResponse({"error": "GET, PUT, DELETE required"}, status=405)
 
 
-@csrf_exempt
 @login_required
 def assets(request):
     # GET: list / search assets
@@ -239,7 +282,6 @@ def assets(request):
 
     return JsonResponse({"error": "GET or POST required"}, status=405)
 
-@csrf_exempt
 @login_required
 def asset(request, asset_id):
     try:
@@ -319,7 +361,6 @@ def asset(request, asset_id):
     return JsonResponse({"error": "GET, PUT, or DELETE required"}, status=405)
 
 
-@csrf_exempt
 @login_required
 def profile(request):
     user = request.user
@@ -363,11 +404,23 @@ def profile(request):
     return JsonResponse({"error": "GET or PUT required"}, status=405)
 
 
-@csrf_exempt
+@ratelimit(key="user_or_ip", rate="10/m", method="POST", block=False)
 @login_required
 def profile_password(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=405)
+
+    if getattr(request, "limited", False):
+        logger.warning(
+            "Rate limit hit on profile_password ip=%s user_id=%s username=%s",
+            _client_ip(request),
+            getattr(request.user, "id", None),
+            getattr(request.user, "username", ""),
+        )
+        return JsonResponse(
+            {"error": "Too many password change attempts. Please wait and try again."},
+            status=429,
+        )
 
     try:
         data = json.loads(request.body or "{}")
@@ -449,7 +502,6 @@ def _derive_ticker(data_symbol):
     return data_symbol.split(".")[0].strip().upper()
 
 
-@csrf_exempt
 @login_required
 def import_data(request):
     if request.method != "POST":
@@ -544,7 +596,6 @@ def import_data(request):
 
 ### ANALYTICS
 
-@csrf_exempt
 @login_required
 def analytics_growth(request):
     if request.method != "GET":
@@ -559,7 +610,6 @@ def analytics_growth(request):
     return JsonResponse(payload)
 
 
-@csrf_exempt
 @login_required
 def analytics_allocation(request):
     if request.method != "GET":
@@ -574,7 +624,6 @@ def analytics_allocation(request):
     return JsonResponse(payload)
 
 
-@csrf_exempt
 @login_required
 def analytics_asset_growth(request):
     if request.method != "GET":

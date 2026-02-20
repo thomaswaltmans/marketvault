@@ -230,7 +230,8 @@ def growth_payload(user):
     prices = get_close_prices_cached(
         data_symbols=holdings.columns.tolist(),
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        user=user,
     )
     
     if prices.empty:
@@ -313,7 +314,8 @@ def allocation_payload(user):
     prices = get_close_prices_cached(
         data_symbols=last_holdings.index.tolist(),
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        user=user,
     )
 
     if prices.empty:
@@ -374,7 +376,8 @@ def asset_growth_payload(user):
     prices = get_close_prices_cached(
         data_symbols=holdings.columns.tolist(),
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        user=user,
     )
     if prices.empty:
         return {"dates": [], "series": []}

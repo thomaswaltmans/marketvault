@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.urls import path
 
 from . import views
@@ -6,7 +7,6 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("login", views.login_view, name="login"),
     path("logout", views.logout_view, name="logout"),
-    path("register", views.register, name="register"),
 
     # API Routes
     path("transactions", views.transactions, name="transactions"),
@@ -23,3 +23,6 @@ urlpatterns = [
     path("analytics/allocation", views.analytics_allocation, name="analytics-allocation"),
     path("analytics/asset-growth", views.analytics_asset_growth, name="analytics-asset-growth"),
 ]
+
+if settings.REGISTRATION_ENABLED:
+    urlpatterns.append(path("register", views.register, name="register"))

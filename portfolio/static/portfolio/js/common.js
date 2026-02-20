@@ -8,8 +8,31 @@ function setText(selector, text) {
     return el;
 }
 
+function getCookie(name) {
+    const cookieValue = document.cookie
+        .split(";")
+        .map((item) => item.trim())
+        .find((item) => item.startsWith(`${name}=`));
+    return cookieValue ? decodeURIComponent(cookieValue.split("=").slice(1).join("=")) : null;
+}
+
 async function apiRequest(url, options = {}) {
-    const response = await fetch(url, options);
+    const method = (options.method || "GET").toUpperCase();
+    const headers = new Headers(options.headers || {});
+
+    if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+        const csrfToken = getCookie("csrftoken");
+        if (csrfToken) headers.set("X-CSRFToken", csrfToken);
+    }
+
+    const requestOptions = {
+        credentials: "same-origin",
+        ...options,
+        method: method,
+        headers: headers,
+    };
+
+    const response = await fetch(url, requestOptions);
     let data = null;
 
     try {

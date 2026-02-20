@@ -20,11 +20,11 @@ Overall, the complexity is in the combination of full-stack architecture + finan
 ## File Overview
 
 - `manage.py`: Django management entrypoint.
-- `finalproject/__init__.py`: Marks the Django project package.
-- `finalproject/settings.py`: Django configuration (apps, middleware, DB, static files, auth model).
-- `finalproject/urls.py`: Root URL configuration.
-- `finalproject/asgi.py`: ASGI entrypoint.
-- `finalproject/wsgi.py`: WSGI entrypoint.
+- `marketvault/__init__.py`: Marks the Django project package.
+- `marketvault/settings.py`: Django configuration (apps, middleware, DB, static files, auth model).
+- `marketvault/urls.py`: Root URL configuration.
+- `marketvault/asgi.py`: ASGI entrypoint.
+- `marketvault/wsgi.py`: WSGI entrypoint.
 - `portfolio/__init__.py`: Marks the app package.
 - `portfolio/admin.py`: Admin registrations (currently minimal).
 - `portfolio/apps.py`: App configuration class.

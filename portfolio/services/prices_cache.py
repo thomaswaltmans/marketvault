@@ -1,16 +1,10 @@
 import pandas as pd
 from datetime import timedelta
 import time
-from django.utils import timezone
 from django.db import transaction as db_transaction
 
 from portfolio.models import Asset, PricePoint
 from portfolio.services.prices_yahoo import download_close_prices
-
-
-def _chunks(lst, size):
-    for i in range(0, len(lst), size):
-        yield lst[i:i+size]
 
 
 def _download_with_retries(symbols, start_date, end_date, retries=3):
@@ -31,7 +25,7 @@ def _download_with_retries(symbols, start_date, end_date, retries=3):
     return last
 
 
-def get_close_prices_cached(data_symbols, start_date, end_date):
+def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
     """
     Returns DataFrame with:
       index: daily dates (datetime64)
@@ -50,15 +44,15 @@ def get_close_prices_cached(data_symbols, start_date, end_date):
     start = pd.to_datetime(start_date).date()
     end = pd.to_datetime(end_date).date()
 
-    # assets in DB for these symbols
-    assets = list(Asset.objects.filter(data_symbol__in=list(data_symbols)))
+    # assets in DB for these symbols (optionally scoped to the requesting user)
+    assets_qs = Asset.objects.filter(data_symbol__in=list(data_symbols))
+    if user is not None:
+        assets_qs = assets_qs.filter(user=user)
+    assets = list(assets_qs)
     if not assets:
         return pd.DataFrame()
 
     symbol_to_asset = {a.data_symbol: a for a in assets}
-
-    # expected daily date range (inclusive of start, exclusive of end)
-    expected_dates = pd.date_range(start, end - timedelta(days=1), freq="D").date
 
     # ---- 1) Load cached points
     cached_points = (
@@ -72,48 +66,47 @@ def get_close_prices_cached(data_symbols, start_date, end_date):
         cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
 
     # ---- 2) Determine if we need to fetch anything
-    # We'll fetch for symbols where we are missing ANY dates in the requested range
-    symbols_to_fetch = []
+    # Never require "all calendar dates" because markets are closed on many days.
+    # Instead, fetch only when symbol has no cache or its latest cached close is stale.
+    fetch_jobs = []
+    refresh_if_older_than = end - timedelta(days=2)
     for a in assets:
-        have = cached_map.get(a.id, {})
-        # if missing any date in expected range => fetch
-        if any(d not in have for d in expected_dates):
-            symbols_to_fetch.append(a.data_symbol)
+        have_dates = sorted(cached_map.get(a.id, {}).keys())
+        if not have_dates:
+            fetch_jobs.append((a.data_symbol, start_date, end_date))
+            continue
 
-    # ---- 3) Fetch missing and save
-    if symbols_to_fetch:
-        downloaded_parts = []
+        latest = have_dates[-1]
+        if latest < refresh_if_older_than:
+            # Incremental refresh window avoids expensive full-history re-downloads.
+            fetch_start = max(start, latest - timedelta(days=7))
+            fetch_jobs.append((a.data_symbol, fetch_start.strftime("%Y-%m-%d"), end_date))
 
-        for group in _chunks(symbols_to_fetch, 8):  # 5–10 is a good range
-            df_part = _download_with_retries(group, start_date, end_date, retries=3)
-            if df_part is not None and not df_part.empty:
-                downloaded_parts.append(df_part)
+    # ---- 3) Fetch missing/stale symbols and save
+    if fetch_jobs:
+        rows_to_create = []
+        for symbol, job_start, job_end in fetch_jobs:
+            downloaded = _download_with_retries([symbol], job_start, job_end, retries=3)
+            if downloaded is None or downloaded.empty:
+                continue
 
-        if downloaded_parts:
-            downloaded = pd.concat(downloaded_parts, axis=1)
-        else:
-            downloaded = pd.DataFrame()
-
-        if not downloaded.empty:
             downloaded.index = pd.to_datetime(downloaded.index.date)
+            if symbol not in downloaded.columns:
+                continue
 
-            rows_to_create = []
-            for symbol in downloaded.columns:
-                asset = symbol_to_asset.get(symbol)
-                if not asset:
+            series = downloaded[symbol].dropna()
+            asset = symbol_to_asset.get(symbol)
+            if not asset:
+                continue
+
+            for dt, close in series.items():
+                d = pd.to_datetime(dt).date()
+                if d < start or d >= end:
                     continue
+                rows_to_create.append(PricePoint(asset=asset, date=d, close=close))
 
-                series = downloaded[symbol].dropna()
-                for dt, close in series.items():
-                    d = pd.to_datetime(dt).date()
-                    if d < start or d >= end:
-                        continue
-
-                    rows_to_create.append(
-                        PricePoint(asset=asset, date=d, close=close)
-                    )
-
-            # bulk insert ignoring duplicates (fast + safe)
+        # bulk insert ignoring duplicates (fast + safe)
+        if rows_to_create:
             with db_transaction.atomic():
                 PricePoint.objects.bulk_create(rows_to_create, ignore_conflicts=True)
 
@@ -129,6 +122,7 @@ def get_close_prices_cached(data_symbols, start_date, end_date):
         data.setdefault(p.asset.data_symbol, {})[p.date] = float(p.close)
 
     # build df on expected index for stability
+    expected_dates = pd.date_range(start, end - timedelta(days=1), freq="D").date
     index = pd.to_datetime(list(expected_dates))
     df = pd.DataFrame(index=index)
 
