@@ -20,9 +20,17 @@ const SENSITIVE_TOGGLE_STORAGE_KEY = "marketvault.hideSensitiveValues";
 function getPlotlyConfig() {
     return {
         responsive: true,
-        displayModeBar: !window.matchMedia("(max-width: 900px)").matches,
+        displayModeBar: false,
         displaylogo: false,
     };
+}
+
+function computeDefaultRangeStart(startDateString, endDateString, years = 1) {
+    const startDate = new Date(startDateString);
+    const endDate = new Date(endDateString);
+    const candidate = new Date(endDate);
+    candidate.setFullYear(candidate.getFullYear() - years);
+    return candidate > startDate ? candidate.toISOString().slice(0, 10) : startDateString;
 }
 
 function view_dashboard() {
@@ -97,13 +105,12 @@ function renderGrowthChart(data) {
     if (dates.length === 0) return;
 
     const lastDate = new Date(dates[dates.length - 1]);
-    const start3y = new Date(lastDate);
-    start3y.setFullYear(start3y.getFullYear() - 3);
+    const defaultStart = computeDefaultRangeStart(dates[0], dates[dates.length - 1], 1);
 
     const layout = {
         xaxis: {
             title: "Date",
-            range: [start3y.toISOString().slice(0, 10), lastDate.toISOString().slice(0, 10)],
+            range: [defaultStart, lastDate.toISOString().slice(0, 10)],
             rangeselector: {
                 buttons: [
                     { count: 1, label: "1m", step: "month", stepmode: "backward" },
@@ -153,7 +160,13 @@ function renderGrowthChart(data) {
         };
 
         chartEl.on("plotly_relayout", chartEl._growthRelayoutHandler);
-        autoScaleGrowthYAxis(chartEl, dates, data.portfolio_value, data.invested, null);
+        autoScaleGrowthYAxis(
+            chartEl,
+            dates,
+            data.portfolio_value,
+            data.invested,
+            { "xaxis.range": [defaultStart, lastDate.toISOString().slice(0, 10)] }
+        );
         Plotly.Plots.resize("chart-growth");
     });
 }
@@ -675,22 +688,27 @@ function renderAssetGrowthChart() {
     selectEl.value = selectedSymbol;
 
     const selected = series.find((item) => item.symbol === selectedSymbol) || series[0];
-    const assetStartDate = getAssetSeriesStartDate(dates, selected.value, selected.invested);
-    const lastDate = dates[dates.length - 1];
+    const startIndex = getAssetSeriesStartIndex(dates, selected.value, selected.invested);
+    const selectedDates = dates.slice(startIndex);
+    const selectedValue = selected.value.slice(startIndex);
+    const selectedInvested = selected.invested.slice(startIndex);
+    const assetStartDate = selectedDates[0] || dates[0];
+    const lastDate = selectedDates[selectedDates.length - 1] || dates[dates.length - 1];
+    const defaultStart = computeDefaultRangeStart(assetStartDate, lastDate, 1);
     const rangeConfig = buildAssetRangeSelector(assetStartDate, lastDate);
 
     const traces = [
         {
-            x: dates,
-            y: selected.value,
+            x: selectedDates,
+            y: selectedValue,
             type: "scatter",
             mode: "lines",
             name: `${selected.symbol}`,
             line: { color: "#1f77b4", width: 1.5 },
         },
         {
-            x: dates,
-            y: selected.invested,
+            x: selectedDates,
+            y: selectedInvested,
             type: "scatter",
             mode: "lines",
             name: "Invested",
@@ -701,7 +719,7 @@ function renderAssetGrowthChart() {
     const layout = {
         xaxis: {
             title: "Date",
-            range: [assetStartDate, lastDate],
+            range: [defaultStart, lastDate],
             rangeselector: {
                 buttons: rangeConfig.buttons,
                 active: rangeConfig.activeIndex,
@@ -737,16 +755,16 @@ function renderAssetGrowthChart() {
                 relayoutData["xaxis.range"] !== undefined ||
                 relayoutData["xaxis.autorange"] !== undefined;
             if (!hasXRangeChange) return;
-            autoScaleGrowthYAxis(chartEl, dates, selected.value, selected.invested, relayoutData);
+            autoScaleGrowthYAxis(chartEl, selectedDates, selectedValue, selectedInvested, relayoutData);
         };
 
         chartEl.on("plotly_relayout", chartEl._assetGrowthRelayoutHandler);
         autoScaleGrowthYAxis(
             chartEl,
-            dates,
-            selected.value,
-            selected.invested,
-            { "xaxis.range": [assetStartDate, lastDate] }
+            selectedDates,
+            selectedValue,
+            selectedInvested,
+            { "xaxis.range": [defaultStart, lastDate] }
         );
         Plotly.Plots.resize("chart-asset-growth");
     });
@@ -757,15 +775,15 @@ function renderAssetGrowthChart() {
     }
 }
 
-function getAssetSeriesStartDate(dates, valueSeries, investedSeries) {
+function getAssetSeriesStartIndex(dates, valueSeries, investedSeries) {
     for (let i = 0; i < dates.length; i += 1) {
         const value = Number(valueSeries?.[i]);
         const invested = Number(investedSeries?.[i]);
         if ((Number.isFinite(value) && value !== 0) || (Number.isFinite(invested) && invested !== 0)) {
-            return dates[i];
+            return i;
         }
     }
-    return dates[0];
+    return 0;
 }
 
 function buildAssetRangeSelector(startDateString, endDateString) {
@@ -784,8 +802,14 @@ function buildAssetRangeSelector(startDateString, endDateString) {
     if (years >= 5) buttons.push({ count: 5, label: "5y", step: "year", stepmode: "backward" });
     buttons.push({ step: "all", label: "ALL" });
 
+    let activeIndex = buttons.length - 1;
+    const oneYearIndex = buttons.findIndex((button) => button.label === "1y");
+    if (oneYearIndex !== -1) {
+        activeIndex = oneYearIndex;
+    }
+
     return {
         buttons: buttons,
-        activeIndex: buttons.length - 1,
+        activeIndex: activeIndex,
     };
 }

@@ -1,4 +1,5 @@
 const ASSET_TYPES = ["ETF", "STOCK", "ETC", "CRYPTO"];
+let assetMenusBound = false;
 
 function buildAssetTypeOptions(selectedType = "STOCK") {
     return ASSET_TYPES.map((type) => {
@@ -59,9 +60,20 @@ async function loadAssets(query = "") {
                         ${asset.currency ? " | " + asset.currency : ""}
                     </div>
                 </div>
-                <div style="white-space:nowrap; display:flex; gap:6px;">
-                    <button class="btn-edit" data-action="edit" data-id="${asset.id}">Edit</button>
-                    <button class="btn-delete" data-action="delete" data-id="${asset.id}">Delete</button>
+                <div class="asset-actions" style="white-space:nowrap;">
+                    <button
+                        class="asset-menu-btn"
+                        data-action="toggle-menu"
+                        data-id="${asset.id}"
+                        title="More actions"
+                        aria-label="More actions"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                    >⋯</button>
+                    <div class="asset-menu" data-menu-id="${asset.id}">
+                        <button class="asset-menu-item" data-action="edit" data-id="${asset.id}">Edit</button>
+                        <button class="asset-menu-item asset-menu-item-danger" data-action="delete" data-id="${asset.id}">Delete</button>
+                    </div>
                 </div>
             </div>
             <div id="asset-edit-${asset.id}" style="display:none; margin-top:0.5rem;"></div>
@@ -69,6 +81,41 @@ async function loadAssets(query = "") {
         `;
         })
         .join("");
+
+    bindAssetMenuDismiss();
+}
+
+function closeAllAssetMenus() {
+    document.querySelectorAll(".asset-menu.is-open").forEach((menu) => {
+        menu.classList.remove("is-open");
+    });
+    document.querySelectorAll(".asset-menu-btn[aria-expanded='true']").forEach((btn) => {
+        btn.setAttribute("aria-expanded", "false");
+    });
+}
+
+function toggleAssetMenu(assetId) {
+    const targetMenu = document.querySelector(`.asset-menu[data-menu-id='${assetId}']`);
+    const targetButton = document.querySelector(`.asset-menu-btn[data-id='${assetId}']`);
+    if (!targetMenu || !targetButton) return;
+
+    const opening = !targetMenu.classList.contains("is-open");
+    closeAllAssetMenus();
+
+    if (opening) {
+        targetMenu.classList.add("is-open");
+        targetButton.setAttribute("aria-expanded", "true");
+    }
+}
+
+function bindAssetMenuDismiss() {
+    if (assetMenusBound) return;
+    document.addEventListener("click", (event) => {
+        const insideMenuArea = event.target.closest(".asset-actions");
+        if (insideMenuArea) return;
+        closeAllAssetMenus();
+    });
+    assetMenusBound = true;
 }
 
 async function createAsset() {
@@ -166,6 +213,7 @@ async function saveAssetEdit(assetId) {
     }
 
     setText(`#edit-status-${assetId}`, "Saved.");
+    closeAllAssetMenus();
     hideEditForm(assetId);
     loadAssets();
 }
@@ -182,5 +230,6 @@ async function deleteAsset(assetId) {
         return;
     }
 
+    closeAllAssetMenus();
     loadAssets();
 }

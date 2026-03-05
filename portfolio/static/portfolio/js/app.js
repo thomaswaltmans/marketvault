@@ -26,8 +26,17 @@ document.addEventListener("DOMContentLoaded", function () {
         const action = button.dataset.action;
         const assetId = button.dataset.id;
 
+        if (action === "toggle-menu") {
+            e.preventDefault();
+            toggleAssetMenu(assetId);
+            return;
+        }
+
         if (action === "delete") await deleteAsset(assetId);
-        if (action === "edit") showEditForm(assetId);
+        if (action === "edit") {
+            closeAllAssetMenus();
+            showEditForm(assetId);
+        }
         if (action === "save-edit") await saveAssetEdit(assetId);
         if (action === "cancel-edit") hideEditForm(assetId);
     });

@@ -19,8 +19,9 @@
         <input class="btn btn-primary" type="submit" value="Login">
     </form>
 
-    {% if REGISTRATION_ENABLED %}
-        Don't have an account? <a href="{% url 'register' %}">Register here.</a>
+    {% url 'register' as register_url %}
+    {% if register_url %}
+        Don't have an account? <a href="{{ register_url }}">Register here.</a>
     {% endif %}
 
 {% endblock %}

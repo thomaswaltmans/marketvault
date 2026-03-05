@@ -166,9 +166,13 @@
 
   <div id="view-transactions" class="view">
     <h2>Transactions</h2>
-    <div style="margin-bottom: 1rem;">
+    <div class="transactions-toolbar" style="margin-bottom: 1rem;">
       <button id="btn-new-transaction">New transaction</button>
-      <button id="btn-go-import">Import file</button>
+      <button id="btn-go-import">Import Excel</button>
+      <a id="btn-export-transactions" class="btn-file" href="/export">Export Excel</a>
+      <select id="txn-filter-asset" class="transactions-filter-select">
+        <option value="">All assets</option>
+      </select>
     </div>
   
     <div id="transactions-status"></div>

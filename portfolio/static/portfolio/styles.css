@@ -82,6 +82,9 @@ button, .btn-file {
   padding: 4px 10px;
   font-size: 0.85rem;
   cursor: pointer;
+  color: var(--text);
+  text-decoration: none;
+  display: inline-block;
 }
 
 button:hover, .btn-file:hover {
@@ -90,6 +93,115 @@ button:hover, .btn-file:hover {
 
 button:active, .btn-file:active {
   transform: translateY(1px);
+}
+
+.btn-file:hover,
+.btn-file:focus,
+.btn-file:active,
+.btn-file:visited {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.transactions-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transactions-filter-select {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  min-height: 31px;
+  margin-left: auto;
+}
+
+.transactions-filter-select:hover {
+  background: #e5e7eb;
+}
+
+.txn-actions,
+.asset-actions {
+  position: relative;
+  display: inline-flex;
+}
+
+.txn-menu-btn,
+.asset-menu-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.14);
+  color: #334155;
+  opacity: 0.9;
+}
+
+.txn-menu-btn:hover,
+.asset-menu-btn:hover {
+  background: rgba(15, 23, 42, 0.1);
+  opacity: 1;
+}
+
+.txn-menu,
+.asset-menu {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  min-width: 110px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(17,24,39,0.14);
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 5;
+}
+
+.txn-menu.is-open,
+.asset-menu.is-open {
+  display: flex;
+}
+
+.txn-menu-item,
+.asset-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+}
+
+.txn-menu-item:hover,
+.asset-menu-item:hover {
+  background: #f1f5f9;
+}
+
+.txn-menu-item-danger,
+.asset-menu-item-danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+@media (max-width: 620px){
+  .transactions-filter-select {
+    margin-left: 0;
+  }
 }
 
 

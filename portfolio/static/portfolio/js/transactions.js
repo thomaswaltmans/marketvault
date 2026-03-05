@@ -1,10 +1,12 @@
 let editingTransactionId = null;
+let activeTransactionAssetFilterId = "";
+let transactionMenusBound = false;
 
 function view_transactions() {
     hide_all_views();
     setActiveNav("#nav-transactions");
     show("#view-transactions");
-    loadTransactions();
+    loadTransactionAssetFilter().then(() => loadTransactions());
 }
 
 async function view_transaction_form(mode, txn = null) {
@@ -37,6 +39,41 @@ function txnStyle(txnType) {
     return "background:#f6f6f6; border:1px solid #ddd;";
 }
 
+function formatTxnQuantity(quantity) {
+    const raw = String(quantity ?? "").trim();
+    if (!raw) return "0";
+
+    const isWholeWithTrailingZeros = /^-?\d+(?:\.0+)?$/.test(raw);
+    if (isWholeWithTrailingZeros) {
+        return String(parseInt(raw, 10));
+    }
+
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) return raw;
+    return numeric.toFixed(4);
+}
+
+function formatEditableDecimal(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    if (!raw.includes(".")) return raw;
+    return raw.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function currencySymbol(currencyCode) {
+    const code = String(currencyCode || "").toUpperCase();
+    if (code === "EUR") return "€";
+    if (code === "USD") return "$";
+    if (code === "GBP") return "£";
+    return code ? `${code} ` : "";
+}
+
+function formatMoneyAmount(amount) {
+    const value = Number(amount);
+    if (!Number.isFinite(value)) return "-";
+    return value.toFixed(2);
+}
+
 async function loadTransactions() {
     setText("#transactions-status", "Loading...");
 
@@ -49,42 +86,73 @@ async function loadTransactions() {
 
     const list = getElement("#transactions-list");
     const txns = data.transactions || [];
-    setText("#transactions-status", `${txns.length} transaction(s).`);
+    const filteredTxns = activeTransactionAssetFilterId
+        ? txns.filter((txn) => String(txn.asset_id) === String(activeTransactionAssetFilterId))
+        : txns;
+
+    const statusText = activeTransactionAssetFilterId
+        ? `${filteredTxns.length} of ${txns.length} transaction(s).`
+        : `${txns.length} transaction(s).`;
+    setText("#transactions-status", statusText);
     if (!list) return;
 
-    if (txns.length === 0) {
-        list.innerHTML = "<p>No transactions yet.</p>";
+    if (filteredTxns.length === 0) {
+        list.innerHTML = activeTransactionAssetFilterId
+            ? "<p>No transactions for selected asset.</p>"
+            : "<p>No transactions yet.</p>";
         return;
     }
 
-    list.innerHTML = txns
+    list.innerHTML = filteredTxns
         .map((t) => {
-            const details =
-                t.txn_type === "DIV"
-                    ? `Dividend: ${t.div_amount}`
-                    : `Qty: ${Number(t.quantity).toFixed(4)} @ ${Number(t.unit_price).toFixed(2)}`;
+            const displayName = (t.asset_name || "").trim() || t.asset;
+            const symbol = currencySymbol(t.asset_currency);
+            const quantity = Number(t.quantity);
+            const unitPrice = Number(t.unit_price);
+            const total = quantity * unitPrice;
+            const headlineAmount = t.txn_type === "DIV"
+                ? `${symbol}${formatMoneyAmount(t.div_amount)}`
+                : `${symbol}${formatMoneyAmount(total)}`;
+            const rightDetails = t.txn_type === "DIV"
+                ? ""
+                : `${formatTxnQuantity(t.quantity)} @ ${formatMoneyAmount(unitPrice)}`;
             const dateOnly = t.timestamp ? t.timestamp.slice(0, 10) : "";
 
             return `
         <div style="padding:0.6rem; margin-bottom:0.5rem; border-radius:10px; ${txnStyle(t.txn_type)}">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-                <div>
-                    <div>
-                        <strong>${t.txn_type}</strong> — <strong>${t.asset}</strong>
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px;">
+                        <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displayName}</strong>
+                        <strong style="white-space:nowrap;">${headlineAmount}</strong>
                     </div>
-                    <div style="font-size:0.9rem; opacity:0.85;">
-                        ${details} <span style="opacity:0.7;">|</span> ${dateOnly}
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:0.9rem; opacity:0.85;">
+                        <span>${dateOnly}</span>
+                        <span style="white-space:nowrap;">${rightDetails}</span>
                     </div>
                 </div>
-                <div style="white-space:nowrap;">
-                    <button data-action="edit" data-id="${t.id}">Edit</button>
-                    <button data-action="delete" data-id="${t.id}">Delete</button>
+                <div class="txn-actions" style="white-space:nowrap;">
+                    <button
+                        class="txn-menu-btn"
+                        data-action="toggle-menu"
+                        data-id="${t.id}"
+                        title="More actions"
+                        aria-label="More actions"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                    >⋯</button>
+                    <div class="txn-menu" data-menu-id="${t.id}">
+                        <button class="txn-menu-item" data-action="edit" data-id="${t.id}">Edit</button>
+                        <button class="txn-menu-item txn-menu-item-danger" data-action="delete" data-id="${t.id}">Delete</button>
+                    </div>
                 </div>
             </div>
         </div>
     `;
         })
         .join("");
+
+    bindTransactionMenuDismiss();
 
     list.onclick = async (e) => {
         const button = e.target.closest("button");
@@ -93,14 +161,85 @@ async function loadTransactions() {
         const action = button.dataset.action;
         const id = button.dataset.id;
 
+        if (action === "toggle-menu") {
+            e.preventDefault();
+            toggleTransactionMenu(id);
+            return;
+        }
+
         if (action === "delete") {
             await deleteTransaction(id);
+            closeAllTransactionMenus();
         }
 
         if (action === "edit") {
-            const txn = txns.find((x) => String(x.id) === String(id));
+            const txn = filteredTxns.find((x) => String(x.id) === String(id));
             if (txn) view_transaction_form("edit", txn);
+            closeAllTransactionMenus();
         }
+    };
+}
+
+function closeAllTransactionMenus() {
+    document.querySelectorAll(".txn-menu.is-open").forEach((menu) => {
+        menu.classList.remove("is-open");
+    });
+    document.querySelectorAll(".txn-menu-btn[aria-expanded='true']").forEach((btn) => {
+        btn.setAttribute("aria-expanded", "false");
+    });
+}
+
+function toggleTransactionMenu(transactionId) {
+    const targetMenu = document.querySelector(`.txn-menu[data-menu-id='${transactionId}']`);
+    const targetButton = document.querySelector(`.txn-menu-btn[data-id='${transactionId}']`);
+    if (!targetMenu || !targetButton) return;
+
+    const opening = !targetMenu.classList.contains("is-open");
+    closeAllTransactionMenus();
+
+    if (opening) {
+        targetMenu.classList.add("is-open");
+        targetButton.setAttribute("aria-expanded", "true");
+    }
+}
+
+function bindTransactionMenuDismiss() {
+    if (transactionMenusBound) return;
+    document.addEventListener("click", (event) => {
+        const insideMenuArea = event.target.closest(".txn-actions");
+        if (insideMenuArea) return;
+        closeAllTransactionMenus();
+    });
+    transactionMenusBound = true;
+}
+
+async function loadTransactionAssetFilter() {
+    const filterSelect = getElement("#txn-filter-asset");
+    if (!filterSelect) return;
+
+    filterSelect.innerHTML = "<option value=''>Loading assets...</option>";
+
+    const { ok, data } = await apiRequest("/assets");
+    if (!ok) {
+        filterSelect.innerHTML = "<option value=''>All assets</option>";
+        activeTransactionAssetFilterId = "";
+        return;
+    }
+
+    const assets = data.assets || [];
+    const options = ["<option value=''>All assets</option>"];
+    assets.forEach((asset) => {
+        options.push(`<option value="${asset.id}">${asset.ticker} — ${asset.data_symbol}</option>`);
+    });
+    filterSelect.innerHTML = options.join("");
+
+    const stillValid = assets.some((asset) => String(asset.id) === String(activeTransactionAssetFilterId));
+    filterSelect.value = stillValid ? String(activeTransactionAssetFilterId) : "";
+    activeTransactionAssetFilterId = filterSelect.value || "";
+
+    filterSelect.onchange = () => {
+        activeTransactionAssetFilterId = filterSelect.value || "";
+        loadTransactions();
     };
 }
 
@@ -157,9 +296,9 @@ function resetTransactionForm() {
 
 function fillTransactionForm(txn) {
     getElement("#txn-type").value = txn.txn_type;
-    getElement("#txn-quantity").value = txn.quantity || "";
-    getElement("#txn-unit-price").value = txn.unit_price || "";
-    getElement("#txn-div-amount").value = txn.div_amount || "";
+    getElement("#txn-quantity").value = formatEditableDecimal(txn.quantity);
+    getElement("#txn-unit-price").value = formatEditableDecimal(txn.unit_price);
+    getElement("#txn-div-amount").value = formatEditableDecimal(txn.div_amount);
     getElement("#txn-timestamp").value = isoToDatetimeLocal(txn.timestamp);
 }
 

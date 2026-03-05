@@ -15,6 +15,7 @@ from django.core.exceptions import ValidationError
 import json
 import logging
 import re
+from io import BytesIO
 from datetime import datetime, timezone as dt_timezone
 
 from .models import User, Asset, Transaction
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
         return decorator
 
 # Create your views here.
+@login_required(login_url="login")
 @ensure_csrf_cookie
 def index(request):
     return render(request, "portfolio/index.html")
@@ -75,7 +77,7 @@ def login_view(request):
     
 def logout_view(request):
     logout(request)
-    return HttpResponseRedirect(reverse("index"))
+    return HttpResponseRedirect(reverse("login"))
 
 @ratelimit(key="ip", rate="10/m", method="POST", block=False)
 def register(request):
@@ -592,6 +594,57 @@ def import_data(request):
         "created_assets": created_assets,
         "row_errors": row_errors,
     }, status=201)
+
+
+@login_required
+def export_data(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+
+    try:
+        from openpyxl import Workbook
+    except ModuleNotFoundError:
+        return JsonResponse(
+            {"error": "Excel export is unavailable because openpyxl is not installed"},
+            status=500,
+        )
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "transactions"
+
+    headers = ["data_symbol", "txn_type", "quantity", "unit_price", "div_amount", "timestamp"]
+    sheet.append(headers)
+
+    transactions = (
+        Transaction.objects
+        .filter(user=request.user)
+        .select_related("asset")
+        .order_by("timestamp")
+    )
+
+    for transaction in transactions:
+        unix_ts = int(transaction.timestamp.astimezone(dt_timezone.utc).timestamp())
+        sheet.append([
+            transaction.asset.data_symbol,
+            transaction.txn_type,
+            str(transaction.quantity) if transaction.quantity is not None else "",
+            str(transaction.unit_price) if transaction.unit_price is not None else "",
+            str(transaction.div_amount) if transaction.div_amount is not None else "",
+            unix_ts,
+        ])
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    filename = f"transactions_export_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 ### ANALYTICS
