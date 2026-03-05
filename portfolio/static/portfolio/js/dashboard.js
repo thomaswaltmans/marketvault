@@ -136,7 +136,7 @@ function renderGrowthChart(data) {
         },
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 40, l: 50, r: 20, b: 40 },
+        margin: { t: 40, l: hideSensitiveValues ? 20 : 50, r: 20, b: 40 },
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
@@ -379,6 +379,7 @@ function applySensitiveYAxisState() {
 
     const nextTitle = hideSensitiveValues ? "" : "Value";
     const showTickLabels = !hideSensitiveValues;
+    const leftMargin = hideSensitiveValues ? 20 : 50;
     const chartIds = ["chart-growth", "chart-asset-growth"];
 
     chartIds.forEach((chartId) => {
@@ -387,6 +388,7 @@ function applySensitiveYAxisState() {
         Plotly.relayout(chartEl, {
             "yaxis.title.text": nextTitle,
             "yaxis.showticklabels": showTickLabels,
+            "margin.l": leftMargin,
         });
     });
 }
@@ -739,7 +741,7 @@ function renderAssetGrowthChart() {
         },
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 40, l: 50, r: 20, b: 40 },
+        margin: { t: 40, l: hideSensitiveValues ? 20 : 50, r: 20, b: 40 },
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
