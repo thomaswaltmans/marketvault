@@ -2,10 +2,17 @@ let activeAllocationLoadToken = 0;
 let allocationViewMode = "assets";
 let allocationRawData = null;
 let allocationToggleInitialized = false;
+let growthChartData = null;
 let assetGrowthData = null;
+let dividendsMonthlyData = null;
+let winnersLosersData = null;
 let hideSensitiveValues = false;
 let overviewMetricsSnapshot = null;
 let sensitiveToggleInitialized = false;
+let growthRangeLabel = "1Y";
+let assetGrowthRangeLabel = "1Y";
+let dividendsRangeLabel = "1Y";
+let winnersLosersRangeLabel = "M";
 
 const ALLOCATION_TYPE_ORDER = ["ETF", "STOCK", "ETC", "CRYPTO"];
 const ALLOCATION_TYPE_COLORS = {
@@ -23,6 +30,30 @@ function getPlotlyConfig() {
         displayModeBar: false,
         displaylogo: false,
     };
+}
+
+function getChartAxisStyle(axis = "x") {
+    const base = {
+        title: "",
+        showline: true,
+        linecolor: "#d1d5db",
+        linewidth: 1,
+        zeroline: false,
+        showgrid: true,
+        gridcolor: "#e5e7eb",
+        tickfont: { color: "#6b7280", size: 12 },
+        tickcolor: "#d1d5db",
+        ticks: "",
+    };
+
+    if (axis === "x") {
+        return {
+            ...base,
+            gridcolor: "#f0f2f5",
+        };
+    }
+
+    return base;
 }
 
 function computeDefaultRangeStart(startDateString, endDateString, years = 1) {
@@ -44,6 +75,8 @@ function view_dashboard() {
         loadGrowthChartWithRetry();
         loadAllocationChartWithRetry();
         loadAssetGrowthChartWithRetry();
+        loadDividendsMonthlyChartWithRetry();
+        loadWinnersLosersCard();
     });
 }
 
@@ -51,6 +84,8 @@ function refreshDashboardCharts() {
     loadGrowthChartWithRetry();
     loadAllocationChartWithRetry();
     loadAssetGrowthChartWithRetry();
+    loadDividendsMonthlyChartWithRetry();
+    loadWinnersLosersCard();
 }
 
 async function loadGrowthChartWithRetry(attempt = 1) {
@@ -66,6 +101,7 @@ async function loadGrowthChartWithRetry(attempt = 1) {
         }
 
         updateOverviewMetrics(data);
+        growthChartData = data;
         renderGrowthChart(data);
     } catch (err) {
         console.log(err);
@@ -102,29 +138,38 @@ function renderGrowthChart(data) {
     ];
 
     const dates = data.dates || [];
-    if (dates.length === 0) return;
+    if (dates.length === 0) {
+        const controlsEl = getElement("#chart-growth-controls");
+        if (controlsEl) controlsEl.innerHTML = "";
+        return;
+    }
 
     const lastDate = new Date(dates[dates.length - 1]);
-    const defaultStart = computeDefaultRangeStart(dates[0], dates[dates.length - 1], 1);
+    const rangeButtons = [
+        { count: 1, label: "1M", step: "month", stepmode: "backward" },
+        { count: 6, label: "6M", step: "month", stepmode: "backward" },
+        { count: 1, label: "1Y", step: "year", stepmode: "backward" },
+        { count: 3, label: "3Y", step: "year", stepmode: "backward" },
+        { count: 5, label: "5Y", step: "year", stepmode: "backward" },
+        { step: "all", label: "ALL" },
+    ];
+    const activeRange = rangeButtons.find((button) => button.label === growthRangeLabel) || rangeButtons[2];
+    const xRange = computeRangeFromButton(dates[0], dates[dates.length - 1], activeRange);
+
+    renderChartRangeControls("chart-growth-controls", rangeButtons, activeRange.label, (label) => {
+        growthRangeLabel = label;
+        if (growthChartData) renderGrowthChart(growthChartData);
+    });
 
     const layout = {
         xaxis: {
-            title: "Date",
-            range: [defaultStart, lastDate.toISOString().slice(0, 10)],
-            rangeselector: {
-                buttons: [
-                    { count: 1, label: "1m", step: "month", stepmode: "backward" },
-                    { count: 6, label: "6m", step: "month", stepmode: "backward" },
-                    { count: 1, label: "1y", step: "year", stepmode: "backward" },
-                    { count: 3, label: "3y", step: "year", stepmode: "backward" },
-                    { count: 5, label: "5y", step: "year", stepmode: "backward" },
-                    { step: "all", label: "ALL" },
-                ],
-            },
+            ...getChartAxisStyle("x"),
+            range: xRange,
+            tickformat: "%b '%y",
             rangeslider: { visible: false },
         },
         yaxis: {
-            title: hideSensitiveValues ? "" : "Value",
+            ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
         },
         legend: {
@@ -136,7 +181,7 @@ function renderGrowthChart(data) {
         },
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 40, l: hideSensitiveValues ? 20 : 50, r: 20, b: 40 },
+        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
@@ -165,7 +210,7 @@ function renderGrowthChart(data) {
             dates,
             data.portfolio_value,
             data.invested,
-            { "xaxis.range": [defaultStart, lastDate.toISOString().slice(0, 10)] }
+            { "xaxis.range": xRange }
         );
         Plotly.Plots.resize("chart-growth");
     });
@@ -286,7 +331,7 @@ function renderAllocationFromData(data) {
         height: 340,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 24, l: 10, r: 10, b: 20 },
+        margin: { t: 16, l: 8, r: 8, b: 12 },
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
@@ -377,16 +422,15 @@ function persistSensitiveToggleState(isHidden) {
 function applySensitiveYAxisState() {
     if (typeof Plotly === "undefined") return;
 
-    const nextTitle = hideSensitiveValues ? "" : "Value";
     const showTickLabels = !hideSensitiveValues;
-    const leftMargin = hideSensitiveValues ? 20 : 50;
-    const chartIds = ["chart-growth", "chart-asset-growth"];
+    const leftMargin = hideSensitiveValues ? 12 : 38;
+    const chartIds = ["chart-growth", "chart-asset-growth", "chart-dividends-monthly"];
 
     chartIds.forEach((chartId) => {
         const chartEl = document.getElementById(chartId);
         if (!chartEl || !chartEl.data) return;
         Plotly.relayout(chartEl, {
-            "yaxis.title.text": nextTitle,
+            "yaxis.title.text": "",
             "yaxis.showticklabels": showTickLabels,
             "margin.l": leftMargin,
         });
@@ -661,8 +705,10 @@ async function loadAssetGrowthChartWithRetry(attempt = 1) {
         }
         const chartEl = getElement("#chart-asset-growth");
         const selectEl = getElement("#asset-growth-select");
+        const controlsEl = getElement("#chart-asset-growth-controls");
         if (chartEl) chartEl.innerHTML = "<p>No per-asset growth data yet.</p>";
         if (selectEl) selectEl.innerHTML = "";
+        if (controlsEl) controlsEl.innerHTML = "";
         return;
     }
 
@@ -696,8 +742,17 @@ function renderAssetGrowthChart() {
     const selectedInvested = selected.invested.slice(startIndex);
     const assetStartDate = selectedDates[0] || dates[0];
     const lastDate = selectedDates[selectedDates.length - 1] || dates[dates.length - 1];
-    const defaultStart = computeDefaultRangeStart(assetStartDate, lastDate, 1);
     const rangeConfig = buildAssetRangeSelector(assetStartDate, lastDate);
+    const activeRange =
+        rangeConfig.buttons.find((button) => button.label === assetGrowthRangeLabel) ||
+        rangeConfig.buttons[rangeConfig.activeIndex] ||
+        rangeConfig.buttons[0];
+    const xRange = computeRangeFromButton(assetStartDate, lastDate, activeRange);
+
+    renderChartRangeControls("chart-asset-growth-controls", rangeConfig.buttons, activeRange.label, (label) => {
+        assetGrowthRangeLabel = label;
+        renderAssetGrowthChart();
+    });
 
     const traces = [
         {
@@ -720,16 +775,13 @@ function renderAssetGrowthChart() {
 
     const layout = {
         xaxis: {
-            title: "Date",
-            range: [defaultStart, lastDate],
-            rangeselector: {
-                buttons: rangeConfig.buttons,
-                active: rangeConfig.activeIndex,
-            },
+            ...getChartAxisStyle("x"),
+            range: xRange,
+            tickformat: "%b '%y",
             rangeslider: { visible: false },
         },
         yaxis: {
-            title: hideSensitiveValues ? "" : "Value",
+            ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
         },
         legend: {
@@ -741,7 +793,7 @@ function renderAssetGrowthChart() {
         },
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 40, l: hideSensitiveValues ? 20 : 50, r: 20, b: 40 },
+        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
         font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
     };
 
@@ -766,7 +818,7 @@ function renderAssetGrowthChart() {
             selectedDates,
             selectedValue,
             selectedInvested,
-            { "xaxis.range": [defaultStart, lastDate] }
+            { "xaxis.range": xRange }
         );
         Plotly.Plots.resize("chart-asset-growth");
     });
@@ -797,15 +849,15 @@ function buildAssetRangeSelector(startDateString, endDateString) {
     const years = months / 12;
 
     const buttons = [];
-    if (months >= 1) buttons.push({ count: 1, label: "1m", step: "month", stepmode: "backward" });
-    if (months >= 6) buttons.push({ count: 6, label: "6m", step: "month", stepmode: "backward" });
-    if (years >= 1) buttons.push({ count: 1, label: "1y", step: "year", stepmode: "backward" });
-    if (years >= 3) buttons.push({ count: 3, label: "3y", step: "year", stepmode: "backward" });
-    if (years >= 5) buttons.push({ count: 5, label: "5y", step: "year", stepmode: "backward" });
+    if (months >= 1) buttons.push({ count: 1, label: "1M", step: "month", stepmode: "backward" });
+    if (months >= 6) buttons.push({ count: 6, label: "6M", step: "month", stepmode: "backward" });
+    if (years >= 1) buttons.push({ count: 1, label: "1Y", step: "year", stepmode: "backward" });
+    if (years >= 3) buttons.push({ count: 3, label: "3Y", step: "year", stepmode: "backward" });
+    if (years >= 5) buttons.push({ count: 5, label: "5Y", step: "year", stepmode: "backward" });
     buttons.push({ step: "all", label: "ALL" });
 
     let activeIndex = buttons.length - 1;
-    const oneYearIndex = buttons.findIndex((button) => button.label === "1y");
+    const oneYearIndex = buttons.findIndex((button) => button.label === "1Y");
     if (oneYearIndex !== -1) {
         activeIndex = oneYearIndex;
     }
@@ -814,4 +866,223 @@ function buildAssetRangeSelector(startDateString, endDateString) {
         buttons: buttons,
         activeIndex: activeIndex,
     };
+}
+
+function buildYearRangeSelector(startDateString, endDateString) {
+    const startDate = new Date(startDateString);
+    const endDate = new Date(endDateString);
+
+    const days = Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const years = days / 365.25;
+    const buttons = [];
+
+    if (years >= 1) buttons.push({ count: 1, label: "1Y", step: "year", stepmode: "backward" });
+    if (years >= 3) buttons.push({ count: 3, label: "3Y", step: "year", stepmode: "backward" });
+    if (years >= 5) buttons.push({ count: 5, label: "5Y", step: "year", stepmode: "backward" });
+    buttons.push({ step: "all", label: "ALL" });
+
+    const oneYearIndex = buttons.findIndex((button) => button.label === "1Y");
+    return {
+        buttons,
+        activeIndex: oneYearIndex !== -1 ? oneYearIndex : buttons.length - 1,
+    };
+}
+
+async function loadDividendsMonthlyChartWithRetry(attempt = 1) {
+    const { ok, data } = await apiRequest("/analytics/dividends-monthly");
+    if (!ok) {
+        if (attempt < 5) {
+            setTimeout(() => loadDividendsMonthlyChartWithRetry(attempt + 1), 700 * attempt);
+        }
+        return;
+    }
+
+    const dates = data?.dates || [];
+    if (!dates.length) {
+        const chartEl = getElement("#chart-dividends-monthly");
+        const controlsEl = getElement("#chart-dividends-monthly-controls");
+        if (chartEl) chartEl.innerHTML = "<p>No dividend history yet.</p>";
+        if (controlsEl) controlsEl.innerHTML = "";
+        return;
+    }
+
+    dividendsMonthlyData = data;
+    renderDividendsMonthlyChart();
+}
+
+function renderDividendsMonthlyChart() {
+    if (!dividendsMonthlyData) return;
+
+    const dates = dividendsMonthlyData.dates || [];
+    const dividends = dividendsMonthlyData.dividends || [];
+    if (!dates.length) return;
+
+    const lastDate = dates[dates.length - 1];
+    const rangeConfig = buildYearRangeSelector(dates[0], lastDate);
+    const activeRange =
+        rangeConfig.buttons.find((button) => button.label === dividendsRangeLabel) ||
+        rangeConfig.buttons[rangeConfig.activeIndex] ||
+        rangeConfig.buttons[0];
+    const xRange = computeRangeFromButton(dates[0], lastDate, activeRange);
+
+    renderChartRangeControls("chart-dividends-monthly-controls", rangeConfig.buttons, activeRange.label, (label) => {
+        dividendsRangeLabel = label;
+        renderDividendsMonthlyChart();
+    });
+
+    const trace = {
+        x: dates,
+        y: dividends,
+        type: "bar",
+        name: "Dividends",
+        marker: {
+            color: "rgba(220, 38, 38, 0.68)",
+            line: {
+                color: "rgba(185, 28, 28, 0.95)",
+                width: 1,
+            },
+        },
+        hovertemplate: "%{x|%b %Y}<br>Dividends: %{y:.2f}<extra></extra>",
+    };
+
+    const layout = {
+        xaxis: {
+            ...getChartAxisStyle("x"),
+            range: xRange,
+            rangeslider: { visible: false },
+            tickformat: "%b '%y",
+        },
+        yaxis: {
+            ...getChartAxisStyle("y"),
+            showticklabels: !hideSensitiveValues,
+            fixedrange: true,
+        },
+        bargap: 0.32,
+        barcornerradius: 8,
+        showlegend: false,
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
+        font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
+    };
+
+    Plotly.react("chart-dividends-monthly", [trace], layout, getPlotlyConfig()).then(() => {
+        Plotly.Plots.resize("chart-dividends-monthly");
+    });
+}
+
+function computeRangeFromButton(startDateString, endDateString, button) {
+    if (!button || button.step === "all") {
+        return [startDateString, endDateString];
+    }
+
+    const startDate = new Date(startDateString);
+    const endDate = new Date(endDateString);
+    const nextStart = new Date(endDate);
+
+    if (button.step === "month") {
+        nextStart.setMonth(nextStart.getMonth() - (button.count || 0));
+    } else if (button.step === "year") {
+        nextStart.setFullYear(nextStart.getFullYear() - (button.count || 0));
+    }
+
+    const boundedStart = nextStart > startDate ? nextStart : startDate;
+    return [boundedStart.toISOString().slice(0, 10), endDateString];
+}
+
+function renderChartRangeControls(containerId, buttons, activeLabel, onSelect) {
+    const container = getElement(`#${containerId}`);
+    if (!container) return;
+
+    container.innerHTML = buttons
+        .map((button) => `
+            <button
+                type="button"
+                class="chart-range-btn${button.label === activeLabel ? " is-active" : ""}"
+                data-label="${button.label}"
+            >${button.label}</button>
+        `)
+        .join("");
+
+    container.querySelectorAll(".chart-range-btn").forEach((buttonEl) => {
+        buttonEl.addEventListener("click", () => onSelect(buttonEl.dataset.label));
+    });
+}
+
+async function loadWinnersLosersCard() {
+    const { ok, data } = await apiRequest(`/analytics/winners-losers?range=${encodeURIComponent(winnersLosersRangeLabel)}`);
+    const controls = [
+        { label: "W" },
+        { label: "M" },
+        { label: "YTD" },
+        { label: "ALL" },
+    ];
+
+    renderChartRangeControls("winners-losers-controls", controls, winnersLosersRangeLabel, (label) => {
+        winnersLosersRangeLabel = label;
+        loadWinnersLosersCard();
+    });
+
+    const container = getElement("#winners-losers-card");
+    if (!container) return;
+
+    if (!ok || !data) {
+        container.innerHTML = "<div class='surface-card'>Unable to load winners and losers.</div>";
+        return;
+    }
+
+    winnersLosersData = data;
+    renderWinnersLosersCard();
+}
+
+function renderWinnersLosersCard() {
+    const container = getElement("#winners-losers-card");
+    if (!container || !winnersLosersData) return;
+
+    const winners = (winnersLosersData.winners || []).filter((item) => Number(item.return_pct) > 0);
+    const losers = (winnersLosersData.losers || []).filter((item) => Number(item.return_pct) < 0);
+    const targetRows = 6;
+
+    const renderItems = (items, emptyText) => {
+        const rows = [];
+
+        if (!items.length) {
+            rows.push(`<div class="performance-empty">${emptyText}</div>`);
+        } else {
+            rows.push(
+                ...items.slice(0, targetRows).map((item) => `
+                <div class="performance-item">
+                    <div class="performance-item-main">
+                        <span class="performance-item-symbol">${item.symbol}</span>
+                        <span class="performance-item-type">${item.asset_type}</span>
+                    </div>
+                    <div class="performance-item-value ${Number(item.return_pct) >= 0 ? "metric-positive" : "metric-negative"}">
+                        ${formatPercent(Number(item.return_pct))}
+                    </div>
+                </div>
+            `)
+            );
+        }
+
+        while (rows.length < targetRows) {
+            rows.push(`<div class="performance-item performance-item-placeholder" aria-hidden="true"></div>`);
+        }
+
+        return rows.join("");
+    };
+
+    container.innerHTML = `
+        <div class="performance-column">
+            <div class="performance-column-title">Winners</div>
+            <div class="performance-list">
+                ${renderItems(winners, "No winners in this period.")}
+            </div>
+        </div>
+        <div class="performance-column">
+            <div class="performance-column-title">Losers</div>
+            <div class="performance-list">
+                ${renderItems(losers, "No losers in this period.")}
+            </div>
+        </div>
+    `;
 }

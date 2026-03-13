@@ -689,3 +689,31 @@ def analytics_asset_growth(request):
 
     payload = asset_growth_payload(request.user)
     return JsonResponse(payload)
+
+
+@login_required
+def analytics_dividends_monthly(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+
+    try:
+        from portfolio.services.analytics import dividends_monthly_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
+    payload = dividends_monthly_payload(request.user)
+    return JsonResponse(payload)
+
+
+@login_required
+def analytics_winners_losers(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+
+    try:
+        from portfolio.services.analytics import winners_losers_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
+    payload = winners_losers_payload(request.user, period=request.GET.get("range", "M"))
+    return JsonResponse(payload)

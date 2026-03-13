@@ -52,6 +52,7 @@ class Transaction(models.Model):
             "asset_id": self.asset.id,
             "asset": self.asset.ticker,
             "asset_name": self.asset.name,
+            "asset_type": self.asset.asset_type,
             "asset_currency": self.asset.currency,
             "data_symbol": self.asset.data_symbol,
             "quantity": str(self.quantity) if self.quantity is not None else None,

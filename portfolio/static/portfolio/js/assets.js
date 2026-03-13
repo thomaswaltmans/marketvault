@@ -1,6 +1,10 @@
 const ASSET_TYPES = ["ETF", "STOCK", "ETC", "CRYPTO"];
 let assetMenusBound = false;
 
+function getAssetTypePillClass(assetType) {
+    return `asset-pill-${String(assetType || "STOCK").toLowerCase()}`;
+}
+
 function buildAssetTypeOptions(selectedType = "STOCK") {
     return ASSET_TYPES.map((type) => {
         const selected = type === selectedType ? "selected" : "";
@@ -39,28 +43,31 @@ async function loadAssets(query = "") {
 
     const assets = data.assets || [];
     if (assets.length === 0) {
-        list.innerHTML = "<p>No assets found.</p>";
+        list.innerHTML = "<div class='surface-card'>No assets found.</div>";
         return;
     }
 
     list.innerHTML = assets
         .map((asset) => {
+            const details = [
+                asset.ticker,
+                asset.asset_type,
+                asset.exchange,
+                asset.currency,
+            ].filter(Boolean);
             return `
-        <div style="padding:0.6rem; margin-bottom:0.5rem; border-radius:10px; border:1px solid #ddd; background:#fafafa;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-                <div>
-                    <div>
+        <div class="asset-item">
+            <div class="asset-item-head">
+                <div class="asset-item-meta">
+                    <div class="asset-item-title">
                         <strong>${asset.name || "(no name)"}</strong>
-                        <small style="opacity:0.75;">(${asset.data_symbol})</small>
+                        <span class="asset-pill ${getAssetTypePillClass(asset.asset_type)}">${asset.data_symbol}</span>
                     </div>
-                    <div style="font-size:0.9rem; opacity:0.85;">
-                        ${asset.ticker}
-                        ${asset.asset_type ? " | " + asset.asset_type : ""}
-                        ${asset.exchange ? " | " + asset.exchange : ""}
-                        ${asset.currency ? " | " + asset.currency : ""}
+                    <div class="asset-item-subtitle">
+                        ${details.map((detail) => `<span>${detail}</span>`).join("")}
                     </div>
                 </div>
-                <div class="asset-actions" style="white-space:nowrap;">
+                <div class="asset-actions">
                     <button
                         class="asset-menu-btn"
                         data-action="toggle-menu"
@@ -76,7 +83,7 @@ async function loadAssets(query = "") {
                     </div>
                 </div>
             </div>
-            <div id="asset-edit-${asset.id}" style="display:none; margin-top:0.5rem;"></div>
+            <div id="asset-edit-${asset.id}" class="asset-edit-panel" style="display:none;"></div>
         </div>
         `;
         })
@@ -164,19 +171,39 @@ async function showEditForm(assetId) {
 
     container.style.display = "block";
     container.innerHTML = `
-    <div style="margin-top: 0.5rem;">
-        <input id="edit-ticker-${assetId}" value="${asset.ticker || ""}" placeholder="Ticker">
-        <input id="edit-name-${assetId}" value="${asset.name || ""}" placeholder="Name">
-        <select id="edit-asset-type-${assetId}">
-            ${buildAssetTypeOptions(asset.asset_type || "STOCK")}
-        </select>
-        <input id="edit-exchange-${assetId}" value="${asset.exchange || ""}" placeholder="Exchange">
-        <input id="edit-currency-${assetId}" value="${asset.currency || ""}" placeholder="Currency">
-        <input id="edit-data-symbol-${assetId}" value="${asset.data_symbol || ""}" placeholder="Data symbol">
+    <div class="form-grid form-grid-3">
+        <div class="form-field">
+            <label>Ticker</label>
+            <input id="edit-ticker-${assetId}" value="${asset.ticker || ""}" placeholder="Ticker">
+        </div>
+        <div class="form-field">
+            <label>Name</label>
+            <input id="edit-name-${assetId}" value="${asset.name || ""}" placeholder="Name">
+        </div>
+        <div class="form-field">
+            <label>Type</label>
+            <select id="edit-asset-type-${assetId}">
+                ${buildAssetTypeOptions(asset.asset_type || "STOCK")}
+            </select>
+        </div>
+        <div class="form-field">
+            <label>Exchange</label>
+            <input id="edit-exchange-${assetId}" value="${asset.exchange || ""}" placeholder="Exchange">
+        </div>
+        <div class="form-field">
+            <label>Currency</label>
+            <input id="edit-currency-${assetId}" value="${asset.currency || ""}" placeholder="Currency">
+        </div>
+        <div class="form-field">
+            <label>Data symbol</label>
+            <input id="edit-data-symbol-${assetId}" value="${asset.data_symbol || ""}" placeholder="Data symbol">
+        </div>
+    </div>
+    <div class="panel-actions">
         <button data-action="save-edit" data-id="${assetId}">Save</button>
         <button data-action="cancel-edit" data-id="${assetId}">Cancel</button>
-        <div id="edit-status-${assetId}" style="margin-top:0.3rem;"></div>
     </div>
+    <div id="edit-status-${assetId}" class="form-status"></div>
     `;
 }
 

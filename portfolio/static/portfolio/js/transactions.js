@@ -2,6 +2,14 @@ let editingTransactionId = null;
 let activeTransactionAssetFilterId = "";
 let transactionMenusBound = false;
 
+function getTransactionTypePillClass(txnType) {
+    return `transaction-pill-${String(txnType || "").toLowerCase()}`;
+}
+
+function getAssetTypePillClass(assetType) {
+    return `asset-pill-${String(assetType || "STOCK").toLowerCase()}`;
+}
+
 function view_transactions() {
     hide_all_views();
     setActiveNav("#nav-transactions");
@@ -30,13 +38,6 @@ async function view_transaction_form(mode, txn = null) {
 
     loadAssetsIntoSelect(txn ? txn.asset_id : null);
     updateTxnFieldVisibility();
-}
-
-function txnStyle(txnType) {
-    if (txnType === "BUY") return "background:#eaffea; border:1px solid #bde5bd;";
-    if (txnType === "SELL") return "background:#ffecec; border:1px solid #f2b8b8;";
-    if (txnType === "DIV") return "background:#fff8db; border:1px solid #f0e1a0;";
-    return "background:#f6f6f6; border:1px solid #ddd;";
 }
 
 function formatTxnQuantity(quantity) {
@@ -98,8 +99,8 @@ async function loadTransactions() {
 
     if (filteredTxns.length === 0) {
         list.innerHTML = activeTransactionAssetFilterId
-            ? "<p>No transactions for selected asset.</p>"
-            : "<p>No transactions yet.</p>";
+            ? "<div class='surface-card'>No transactions for selected asset.</div>"
+            : "<div class='surface-card'>No transactions yet.</div>";
         return;
     }
 
@@ -117,21 +118,24 @@ async function loadTransactions() {
                 ? ""
                 : `${formatTxnQuantity(t.quantity)} @ ${formatMoneyAmount(unitPrice)}`;
             const dateOnly = t.timestamp ? t.timestamp.slice(0, 10) : "";
+            const typeClass = `transaction-item-${String(t.txn_type || "").toLowerCase()}`;
 
             return `
-        <div style="padding:0.6rem; margin-bottom:0.5rem; border-radius:10px; ${txnStyle(t.txn_type)}">
-            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-                <div style="flex:1; min-width:0;">
-                    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px;">
+        <div class="transaction-item ${typeClass}">
+            <div class="transaction-item-head">
+                <div class="transaction-item-meta">
+                    <div class="transaction-item-title">
                         <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displayName}</strong>
-                        <strong style="white-space:nowrap;">${headlineAmount}</strong>
+                        <span class="transaction-pill ${getTransactionTypePillClass(t.txn_type)}">${t.txn_type}</span>
+                        <span class="asset-pill ${getAssetTypePillClass(t.asset_type)}">${t.data_symbol}</span>
                     </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:0.9rem; opacity:0.85;">
+                    <div class="transaction-item-subtitle">
                         <span>${dateOnly}</span>
-                        <span style="white-space:nowrap;">${rightDetails}</span>
+                        ${rightDetails ? `<span>${rightDetails}</span>` : ""}
+                        <span>${headlineAmount}</span>
                     </div>
                 </div>
-                <div class="txn-actions" style="white-space:nowrap;">
+                <div class="txn-actions">
                     <button
                         class="txn-menu-btn"
                         data-action="toggle-menu"

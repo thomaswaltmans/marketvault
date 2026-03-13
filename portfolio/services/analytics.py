@@ -439,3 +439,132 @@ def asset_growth_payload(user):
 
     dates = [d.strftime("%Y-%m-%d") for d in values.index]
     return {"dates": dates, "series": series}
+
+
+def dividends_monthly_payload(user):
+    """
+    Returns monthly dividend totals for a bar chart:
+    - dates: month-end timestamps as YYYY-MM-DD
+    - dividends: monthly dividend sums
+    """
+    df = _transactions_dataframe(user)
+    if df.empty:
+        return {"dates": [], "dividends": []}
+
+    divs = df[df["txn_type"] == "DIV"].copy()
+    if divs.empty:
+        return {"dates": [], "dividends": []}
+
+    divs["div_amount"] = divs["div_amount"].fillna(0.0)
+    monthly = (
+        divs.groupby(pd.Grouper(key="date", freq="ME"))["div_amount"]
+        .sum()
+        .sort_index()
+    )
+
+    if monthly.empty:
+        return {"dates": [], "dividends": []}
+
+    start = monthly.index.min()
+    end = pd.to_datetime(timezone.now().date()).to_period("M").to_timestamp("M")
+    full_index = pd.date_range(start, end, freq="ME")
+    monthly = monthly.reindex(full_index, fill_value=0.0)
+
+    return {
+        "dates": [d.strftime("%Y-%m-%d") for d in monthly.index],
+        "dividends": [float(x) for x in monthly.values],
+    }
+
+
+def _period_start_for_label(label, earliest_timestamp):
+    label = str(label or "ALL").upper()
+    today = timezone.now().date()
+    earliest = pd.to_datetime(earliest_timestamp)
+
+    if label == "W":
+        candidate = pd.to_datetime(today - timezone.timedelta(days=7))
+    elif label == "M":
+        candidate = pd.to_datetime(today - timezone.timedelta(days=30))
+    elif label == "YTD":
+        candidate = pd.Timestamp(year=today.year, month=1, day=1)
+    else:
+        candidate = earliest
+
+    return candidate if candidate > earliest else earliest
+
+
+def winners_losers_payload(user, period="M", limit=6):
+    """
+    Returns best and worst currently-held assets over a selected period.
+    Performance is measured as price return while the asset was held in the window.
+    """
+    df = _transactions_dataframe(user)
+    if df.empty:
+        return {"period": str(period or "M").upper(), "winners": [], "losers": []}
+
+    holdings = _holdings_timeseries(df)
+    if holdings.empty:
+        return {"period": str(period or "M").upper(), "winners": [], "losers": []}
+
+    latest_holdings = holdings.iloc[-1]
+    open_symbols = latest_holdings[latest_holdings > 0].index.tolist()
+    if not open_symbols:
+        return {"period": str(period or "M").upper(), "winners": [], "losers": []}
+
+    period_label = str(period or "M").upper()
+    start_ts = _period_start_for_label(period_label, holdings.index.min())
+    window_holdings = holdings.loc[holdings.index >= start_ts, open_symbols].copy()
+    if window_holdings.empty:
+        return {"period": period_label, "winners": [], "losers": []}
+
+    prices = get_close_prices_cached(
+        data_symbols=open_symbols,
+        start_date=window_holdings.index.min().strftime("%Y-%m-%d"),
+        end_date=(timezone.now().date() + timezone.timedelta(days=1)).strftime("%Y-%m-%d"),
+        user=user,
+    )
+    if prices.empty:
+        return {"period": period_label, "winners": [], "losers": []}
+
+    prices.index = pd.to_datetime(prices.index.date)
+    prices = prices.reindex(window_holdings.index).ffill().bfill()
+    prices = prices.reindex(columns=open_symbols).dropna(axis=1, how="all")
+    if prices.empty:
+        return {"period": period_label, "winners": [], "losers": []}
+
+    window_holdings = window_holdings.reindex(columns=prices.columns).fillna(0)
+    type_map = {
+        asset.data_symbol: asset.asset_type
+        for asset in Asset.objects.filter(user=user, data_symbol__in=prices.columns.tolist())
+    }
+
+    rows = []
+    latest_date = window_holdings.index[-1]
+    for symbol in prices.columns:
+        symbol_holdings = window_holdings[symbol]
+        active_dates = symbol_holdings[symbol_holdings > 0].index
+        if active_dates.empty:
+            continue
+
+        start_date = active_dates[0]
+        start_price = pd.to_numeric(prices.at[start_date, symbol], errors="coerce")
+        end_price = pd.to_numeric(prices.at[latest_date, symbol], errors="coerce")
+        if not pd.notna(start_price) or not pd.notna(end_price) or float(start_price) <= 0:
+            continue
+
+        return_pct = ((float(end_price) - float(start_price)) / float(start_price)) * 100
+        rows.append({
+            "symbol": symbol,
+            "asset_type": type_map.get(symbol, "STOCK"),
+            "return_pct": float(return_pct),
+        })
+
+    if not rows:
+        return {"period": period_label, "winners": [], "losers": []}
+
+    ranked = sorted(rows, key=lambda item: item["return_pct"], reverse=True)
+    return {
+        "period": period_label,
+        "winners": ranked[:limit],
+        "losers": sorted(rows, key=lambda item: item["return_pct"])[:limit],
+    }

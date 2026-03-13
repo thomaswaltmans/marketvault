@@ -3,55 +3,68 @@
 
 {% block body %}
   <div id="view-profile" class="view">
-    <h2>Account</h2>
+    <div class="view-header">
+      <div class="dashboard-title-block">
+        <span class="dashboard-kicker">Settings</span>
+      </div>
+    </div>
     <div class="grid">
-      <div class="card card-overview span-6">
-        <h3>Profile</h3>
-        <div style="margin-bottom: 0.75rem;">
-          <label>Username</label><br>
+      <div class="card surface-card span-6">
+        <div class="card-title-block">
+          <span class="card-eyebrow">Profile</span>
+        </div>
+        <div class="form-field">
+          <label>Username</label>
           <input id="profile-username" disabled>
         </div>
-        <div style="margin-bottom: 0.75rem;">
-          <label>Email</label><br>
+        <div class="form-field">
+          <label>Email</label>
           <input id="profile-email">
         </div>
-        <div style="margin-bottom: 0.75rem;">
-          <label>First name</label><br>
+        <div class="form-field">
+          <label>First name</label>
           <input id="profile-first-name">
         </div>
-        <div style="margin-bottom: 0.75rem;">
-          <label>Last name</label><br>
+        <div class="form-field">
+          <label>Last name</label>
           <input id="profile-last-name">
         </div>
-        <button id="btn-save-profile">Save profile</button>
-        <div id="profile-status" style="margin-top:0.5rem;"></div>
+        <div class="panel-actions">
+          <button id="btn-save-profile">Save profile</button>
+        </div>
+        <div id="profile-status" class="form-status"></div>
       </div>
 
-      <div class="card span-6">
-        <h3>Security</h3>
-        <div style="margin-bottom: 0.75rem;">
-          <label>Current password</label><br>
+      <div class="card surface-card span-6">
+        <div class="card-title-block">
+          <span class="card-eyebrow">Security</span>
+        </div>
+        <div class="form-field">
+          <label>Current password</label>
           <input id="password-current" type="password">
         </div>
-        <div style="margin-bottom: 0.75rem;">
-          <label>New password</label><br>
+        <div class="form-field">
+          <label>New password</label>
           <input id="password-new" type="password">
         </div>
-        <div style="margin-bottom: 0.75rem;">
-          <label>Confirm new password</label><br>
+        <div class="form-field">
+          <label>Confirm new password</label>
           <input id="password-confirm" type="password">
         </div>
-        <button id="btn-change-password">Change password</button>
-        <div id="password-status" style="margin-top:0.5rem;"></div>
-        <hr>
-        <a class="btn btn-outline-secondary btn-sm" href="{% url 'logout' %}">Log Out</a>
+        <div class="panel-actions">
+          <button id="btn-change-password">Change password</button>
+          <a class="btn-file" href="{% url 'logout' %}">Log Out</a>
+        </div>
+        <div id="password-status" class="form-status"></div>
       </div>
     </div>
   </div>
 
   <div id="view-dashboard" class="dashboard">
     <div class="dashboard-header">
-      <h2>Dashboard</h2>
+      <div class="dashboard-title-block">
+        <span class="dashboard-kicker">Portfolio</span>
+      </div>
       <button id="btn-sensitive-toggle" class="sensitive-toggle" type="button" aria-pressed="false" aria-label="Hide sensitive values">
         <svg class="icon-eye" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 5C6.5 5 2.1 8.2 1 12c1.1 3.8 5.5 7 11 7s9.9-3.2 11-7c-1.1-3.8-5.5-7-11-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z"></path>
@@ -63,8 +76,10 @@
       </button>
     </div>
     <div class="grid">
-      <div class="card card-overview span-6">
-        <h3>Overview</h3>
+      <div class="card card-overview card-overview-main span-6">
+        <div class="card-title-block">
+          <span class="card-eyebrow">Overview</span>
+        </div>
         <div class="stats-grid-wrap">
         <div class="stats-grid">
           <div class="stat-item">
@@ -109,7 +124,9 @@
 
       <div class="card card-allocation span-6">
         <div class="allocation-header">
-          <h3>Allocation</h3>
+          <div class="card-title-block">
+            <span class="card-eyebrow">Allocation</span>
+          </div>
           <div class="allocation-toggle">
             <button id="btn-allocation-assets" class="is-active" type="button">Assets</button>
             <button id="btn-allocation-types" type="button">Type</button>
@@ -121,52 +138,115 @@
         </div>
       </div>
 
-      <div class="card span-12">
-        <h3>Portfolio Value</h3>
+      <div class="card card-chart card-chart-growth span-6">
+        <div class="card-chart-header">
+          <div class="card-title-block">
+            <span class="card-eyebrow">Value</span>
+          </div>
+          <div id="chart-growth-controls" class="chart-controls"></div>
+        </div>
         <div id="chart-growth" class="chart"></div>
       </div>
 
-      <div class="card span-12">
-        <div class="card-head-row">
-          <h3>Asset Growth</h3>
-          <select id="asset-growth-select"></select>
+      <div class="card card-chart card-chart-asset span-6">
+        <div class="card-chart-header">
+          <div class="card-title-block">
+            <span class="card-eyebrow">Growth</span>
+          </div>
+          <div class="chart-toolbar">
+            <div id="chart-asset-growth-controls" class="chart-controls"></div>
+            <select id="asset-growth-select"></select>
+          </div>
         </div>
         <div id="chart-asset-growth" class="chart"></div>
+      </div>
+
+      <div class="card card-chart card-chart-dividends span-6">
+        <div class="card-chart-header">
+          <div class="card-title-block">
+            <span class="card-eyebrow">Dividends</span>
+          </div>
+          <div id="chart-dividends-monthly-controls" class="chart-controls"></div>
+        </div>
+        <div id="chart-dividends-monthly" class="chart chart-dividends"></div>
+      </div>
+
+      <div class="card span-6 card-performance">
+        <div class="card-chart-header">
+          <div class="card-title-block">
+            <span class="card-eyebrow">Winners / Losers</span>
+          </div>
+          <div id="winners-losers-controls" class="chart-controls"></div>
+        </div>
+        <div id="winners-losers-card" class="performance-board"></div>
       </div>
   </div>
   </div>
 
   <div id="view-assets" class="view">
-    <h2>Assets</h2>
+    <div class="view-header">
+      <div class="dashboard-title-block">
+        <span class="dashboard-kicker">Library</span>
+      </div>
+    </div>
 
-    <div style="margin-bottom: 1rem;">
+    <div class="panel-toolbar">
       <input id="asset-search" placeholder="Search by ticker, name, or data symbol">
       <button id="btn-asset-search">Search</button>
       <button id="btn-toggle-asset-create">Create asset</button>
     </div>
   
-    <div id="asset-create-panel" style="margin-bottom: 1rem; display:none;">
-      <input id="asset-ticker" placeholder="Ticker (e.g. ASML)" />
-      <input id="asset-name" placeholder="Name (optional)" />
-      <select id="asset-type">
-        <option value="ETF">ETF</option>
-        <option value="STOCK" selected>Stock</option>
-        <option value="ETC">ETC</option>
-        <option value="CRYPTO">Crypto</option>
-      </select>
-      <input id="asset-exchange" placeholder="Exchange (optional, e.g. Euronext)" />
-      <input id="asset-currency" placeholder="Currency (default EUR)" />
-      <input id="asset-data-symbol" placeholder="Data symbol (e.g. ASML.AS)" />
-      <button id="btn-asset-create">Create</button>
-      <div id="asset-create-status"></div>
+    <div id="asset-create-panel" class="card surface-card card-panel span-12" style="display:none;">
+      <div class="card-title-block">
+        <span class="card-eyebrow">New asset</span>
+      </div>
+      <div class="form-grid form-grid-3">
+        <div class="form-field">
+          <label>Ticker</label>
+          <input id="asset-ticker" placeholder="e.g. ASML" />
+        </div>
+        <div class="form-field">
+          <label>Name</label>
+          <input id="asset-name" placeholder="Optional" />
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select id="asset-type">
+            <option value="ETF">ETF</option>
+            <option value="STOCK" selected>Stock</option>
+            <option value="ETC">ETC</option>
+            <option value="CRYPTO">Crypto</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Exchange</label>
+          <input id="asset-exchange" placeholder="e.g. Euronext" />
+        </div>
+        <div class="form-field">
+          <label>Currency</label>
+          <input id="asset-currency" placeholder="Default EUR" />
+        </div>
+        <div class="form-field">
+          <label>Data symbol</label>
+          <input id="asset-data-symbol" placeholder="e.g. ASML.AS" />
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button id="btn-asset-create">Create</button>
+      </div>
+      <div id="asset-create-status" class="form-status"></div>
     </div>
   
-    <div id="assets-list"></div>
+    <div id="assets-list" class="stack-list"></div>
   </div>
 
   <div id="view-transactions" class="view">
-    <h2>Transactions</h2>
-    <div class="transactions-toolbar" style="margin-bottom: 1rem;">
+    <div class="view-header">
+      <div class="dashboard-title-block">
+        <span class="dashboard-kicker">Activity</span>
+      </div>
+    </div>
+    <div class="transactions-toolbar panel-toolbar">
       <button id="btn-new-transaction">New transaction</button>
       <button id="btn-go-import">Import Excel</button>
       <a id="btn-export-transactions" class="btn-file" href="/export">Export Excel</a>
@@ -175,56 +255,64 @@
       </select>
     </div>
   
-    <div id="transactions-status"></div>
-    <div id="transactions-list"></div>
+    <div id="transactions-status" class="form-status"></div>
+    <div id="transactions-list" class="stack-list"></div>
   </div>
 
   <div id="view-transaction-form" class="view">
-    <h2 id="transaction-form-title">New transaction</h2>
+    <div class="view-header">
+      <div class="dashboard-title-block">
+        <span class="dashboard-kicker">Activity</span>
+        <h2 id="transaction-form-title">New transaction</h2>
+      </div>
+    </div>
+    <div class="card surface-card card-panel">
+      <div class="form-grid form-grid-2">
+        <div class="form-field">
+          <label>Type</label>
+          <select id="txn-type">
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+            <option value="DIV">DIV</option>
+          </select>
+        </div>
+    
+        <div class="form-field">
+          <label>Asset</label>
+          <select id="txn-asset"></select>
+          <div class="field-hint" id="txn-asset-hint"></div>
+        </div>
+      </div>
 
-    <div style="margin-bottom: 0.75rem;">
-      <label>Type</label><br>
-      <select id="txn-type">
-        <option value="BUY">BUY</option>
-        <option value="SELL">SELL</option>
-        <option value="DIV">DIV</option>
-      </select>
-    </div>
-  
-    <div style="margin-bottom: 0.75rem;">
-      <label>Asset</label><br>
-      <select id="txn-asset"></select>
-      <div style="font-size: 0.9rem; opacity: 0.8;" id="txn-asset-hint"></div>
-    </div>
-  
-    <div id="trade-fields">
-      <div style="margin-bottom: 0.75rem;">
-        <label>Quantity</label><br>
-        <input id="txn-quantity" placeholder="e.g. 2 or 0.5">
+      <div id="trade-fields" class="form-grid form-grid-2">
+        <div class="form-field">
+          <label>Quantity</label>
+          <input id="txn-quantity" placeholder="e.g. 2 or 0.5">
+        </div>
+    
+        <div class="form-field">
+          <label>Unit price</label>
+          <input id="txn-unit-price" placeholder="e.g. 88.49">
+        </div>
       </div>
-  
-      <div style="margin-bottom: 0.75rem;">
-        <label>Unit price</label><br>
-        <input id="txn-unit-price" placeholder="e.g. 88.49">
+    
+      <div id="div-fields" style="display:none;">
+        <div class="form-field">
+          <label>Dividend amount</label>
+          <input id="txn-div-amount" placeholder="e.g. 12.34">
+        </div>
       </div>
-    </div>
-  
-    <div id="div-fields" style="display:none;">
-      <div style="margin-bottom: 0.75rem;">
-        <label>Dividend amount</label><br>
-        <input id="txn-div-amount" placeholder="e.g. 12.34">
+    
+      <div class="form-field">
+        <label>Timestamp</label>
+        <input id="txn-timestamp" type="datetime-local" placeholder="today">
       </div>
-    </div>
-  
-    <div style="margin-bottom: 0.75rem;">
-      <label>Timestamp (optional ISO)</label><br>
-      <input id="txn-timestamp" type="datetime-local" placeholder="today">
-    </div>
-  
-    <div style="margin-top: 1rem;">
-      <button id="btn-save-transaction">Save</button>
-      <button id="btn-cancel-transaction">Cancel</button>
-      <div id="transaction-form-status" style="margin-top:0.5rem;"></div>
+    
+      <div class="panel-actions">
+        <button id="btn-save-transaction">Save</button>
+        <button id="btn-cancel-transaction">Cancel</button>
+      </div>
+      <div id="transaction-form-status" class="form-status"></div>
     </div>
   </div>
 
