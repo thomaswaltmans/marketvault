@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import timedelta
 import time
 from django.db import transaction as db_transaction
+from django.utils import timezone
 
 from portfolio.models import Asset, PricePoint
 from portfolio.services.prices_yahoo import download_close_prices
@@ -25,7 +26,29 @@ def _download_with_retries(symbols, start_date, end_date, retries=3):
     return last
 
 
-def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
+def _has_suspicious_jump(cached_dates_to_close):
+    """
+    Detect obviously broken cached history, typically caused by mixing differently
+    adjusted Yahoo series across refreshes. Real overnight moves of this size are
+    rare for the assets in this app, so a large ratio is a good repair trigger.
+    """
+    if not cached_dates_to_close or len(cached_dates_to_close) < 2:
+        return False
+
+    dates = sorted(cached_dates_to_close.keys())
+    prev_close = None
+    for dt in dates:
+        close = float(cached_dates_to_close[dt])
+        if prev_close and prev_close > 0:
+            ratio = close / prev_close
+            if ratio >= 1.8 or ratio <= 0.55:
+                return True
+        prev_close = close
+
+    return False
+
+
+def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force_refresh_symbols=None):
     """
     Returns DataFrame with:
       index: daily dates (datetime64)
@@ -40,6 +63,8 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
     """
     if not data_symbols:
         return pd.DataFrame()
+
+    force_refresh_symbols = set(force_refresh_symbols or [])
 
     start = pd.to_datetime(start_date).date()
     end = pd.to_datetime(end_date).date()
@@ -72,19 +97,28 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
     refresh_if_older_than = end - timedelta(days=2)
     for a in assets:
         have_dates = sorted(cached_map.get(a.id, {}).keys())
+        if a.data_symbol in force_refresh_symbols:
+            fetch_jobs.append((a.data_symbol, start_date, end_date))
+            continue
+
         if not have_dates:
             fetch_jobs.append((a.data_symbol, start_date, end_date))
             continue
 
         latest = have_dates[-1]
+        if _has_suspicious_jump(cached_map.get(a.id, {})):
+            fetch_jobs.append((a.data_symbol, start_date, end_date))
+            continue
+
         if latest < refresh_if_older_than:
-            # Incremental refresh window avoids expensive full-history re-downloads.
-            fetch_start = max(start, latest - timedelta(days=7))
-            fetch_jobs.append((a.data_symbol, fetch_start.strftime("%Y-%m-%d"), end_date))
+            # Refresh the full requested window so cached rows remain on one
+            # consistent price basis instead of mixing old and new downloads.
+            fetch_jobs.append((a.data_symbol, start_date, end_date))
 
     # ---- 3) Fetch missing/stale symbols and save
     if fetch_jobs:
         rows_to_create = []
+        delete_ranges = []
         for symbol, job_start, job_end in fetch_jobs:
             downloaded = _download_with_retries([symbol], job_start, job_end, retries=3)
             if downloaded is None or downloaded.empty:
@@ -99,6 +133,8 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
             if not asset:
                 continue
 
+            delete_ranges.append((asset, pd.to_datetime(job_start).date(), pd.to_datetime(job_end).date()))
+
             for dt, close in series.items():
                 d = pd.to_datetime(dt).date()
                 if d < start or d >= end:
@@ -108,7 +144,18 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
         # bulk insert ignoring duplicates (fast + safe)
         if rows_to_create:
             with db_transaction.atomic():
-                PricePoint.objects.bulk_create(rows_to_create, ignore_conflicts=True)
+                for asset, delete_start, delete_end in delete_ranges:
+                    PricePoint.objects.filter(
+                        asset=asset,
+                        date__gte=delete_start,
+                        date__lt=delete_end,
+                    ).delete()
+                PricePoint.objects.bulk_create(
+                    rows_to_create,
+                    update_conflicts=True,
+                    update_fields=["close"],
+                    unique_fields=["asset", "date"],
+                )
 
     # ---- 4) Re-load everything from DB and build the final DF
     final_points = (
@@ -139,3 +186,41 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None):
     df = df.dropna(axis=1, how="all")
 
     return df
+
+
+def purge_asset_price_history(asset):
+    deleted_count, _ = PricePoint.objects.filter(asset=asset).delete()
+    return deleted_count
+
+
+def refresh_asset_price_history(asset, user=None, lookback_years=10):
+    """
+    Force a clean re-download for a single asset by clearing its cached rows first.
+    The refresh window starts at the first known transaction for the asset, or a
+    reasonable historical fallback when no transactions exist yet.
+    """
+    first_txn = asset.transactions.order_by("timestamp").values_list("timestamp", flat=True).first()
+    if first_txn is not None:
+        start_date = (first_txn.date() - timedelta(days=7))
+    else:
+        start_date = (timezone.now().date() - timedelta(days=365 * lookback_years))
+
+    end_date = timezone.now().date() + timedelta(days=1)
+    purged_rows = purge_asset_price_history(asset)
+    refreshed = get_close_prices_cached(
+        data_symbols=[asset.data_symbol],
+        start_date=start_date,
+        end_date=end_date,
+        user=user,
+        force_refresh_symbols={asset.data_symbol},
+    )
+    fetched_points = 0
+    if asset.data_symbol in refreshed.columns:
+        fetched_points = int(refreshed[asset.data_symbol].dropna().shape[0])
+
+    return {
+        "purged_rows": purged_rows,
+        "fetched_points": fetched_points,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }

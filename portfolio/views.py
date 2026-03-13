@@ -19,6 +19,7 @@ from io import BytesIO
 from datetime import datetime, timezone as dt_timezone
 
 from .models import User, Asset, Transaction
+from .services.prices_cache import refresh_asset_price_history
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,8 @@ def asset(request, asset_id):
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+        original_data_symbol = asset.data_symbol
+
         if "ticker" in data:
             asset.ticker = data["ticker"].strip().upper()
 
@@ -331,6 +334,9 @@ def asset(request, asset_id):
         if "data_symbol" in data:
             asset.data_symbol = data["data_symbol"].strip()
 
+        symbol_changed = asset.data_symbol != original_data_symbol
+        refresh_prices = bool(data.get("refresh_prices")) or symbol_changed
+
         try:
             asset.full_clean()
             asset.save()
@@ -338,6 +344,10 @@ def asset(request, asset_id):
             return JsonResponse({"errors": error.message_dict}, status=400)
         except IntegrityError:
             return JsonResponse({"error": "Asset already exists for this account"}, status=400)
+
+        refresh_result = None
+        if refresh_prices:
+            refresh_result = refresh_asset_price_history(asset, user=request.user)
 
         return JsonResponse({
             "id": asset.id,
@@ -347,6 +357,7 @@ def asset(request, asset_id):
             "exchange": asset.exchange,
             "currency": asset.currency,
             "data_symbol": asset.data_symbol,
+            "price_refresh": refresh_result,
         })
 
     # DELETE
@@ -361,6 +372,24 @@ def asset(request, asset_id):
         return JsonResponse({"message": "Deleted"})
 
     return JsonResponse({"error": "GET, PUT, or DELETE required"}, status=405)
+
+
+@login_required
+def refresh_asset_prices(request, asset_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    try:
+        asset = Asset.objects.get(id=asset_id, user=request.user)
+    except Asset.DoesNotExist:
+        return JsonResponse({"error": "Asset not found"}, status=404)
+
+    result = refresh_asset_price_history(asset, user=request.user)
+    return JsonResponse({
+        "asset_id": asset.id,
+        "data_symbol": asset.data_symbol,
+        "price_refresh": result,
+    })
 
 
 @login_required

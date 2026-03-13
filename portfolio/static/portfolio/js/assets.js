@@ -201,6 +201,7 @@ async function showEditForm(assetId) {
     </div>
     <div class="panel-actions">
         <button data-action="save-edit" data-id="${assetId}">Save</button>
+        <button data-action="refresh-prices" data-id="${assetId}">Refresh prices</button>
         <button data-action="cancel-edit" data-id="${assetId}">Cancel</button>
     </div>
     <div id="edit-status-${assetId}" class="form-status"></div>
@@ -239,10 +240,15 @@ async function saveAssetEdit(assetId) {
         return;
     }
 
-    setText(`#edit-status-${assetId}`, "Saved.");
+    const fetchedPoints = data?.price_refresh?.fetched_points;
+    const statusText = Number.isFinite(fetchedPoints)
+        ? `Saved and refreshed prices (${fetchedPoints} points).`
+        : "Saved.";
+    setText(`#edit-status-${assetId}`, statusText);
     closeAllAssetMenus();
     hideEditForm(assetId);
     loadAssets();
+    refreshDashboardCharts();
 }
 
 async function deleteAsset(assetId) {
@@ -259,4 +265,23 @@ async function deleteAsset(assetId) {
 
     closeAllAssetMenus();
     loadAssets();
+}
+
+async function refreshAssetPrices(assetId) {
+    setText(`#edit-status-${assetId}`, "Refreshing prices...");
+
+    const { ok, data } = await apiRequest(`/assets/${assetId}/refresh-prices`, {
+        method: "POST",
+    });
+
+    if (!ok) {
+        console.log(data);
+        setText(`#edit-status-${assetId}`, "Price refresh failed.");
+        return;
+    }
+
+    const fetchedPoints = data?.price_refresh?.fetched_points ?? 0;
+    setText(`#edit-status-${assetId}`, `Prices refreshed (${fetchedPoints} points).`);
+    loadAssets();
+    refreshDashboardCharts();
 }

@@ -16,6 +16,7 @@ urlpatterns = [
 
     path("assets", views.assets, name="assets"), 
     path("assets/<int:asset_id>", views.asset, name="asset"), 
+    path("assets/<int:asset_id>/refresh-prices", views.refresh_asset_prices, name="asset-refresh-prices"),
 
     path("profile", views.profile, name="profile"),
     path("profile/password", views.profile_password, name="profile-password"),

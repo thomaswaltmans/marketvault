@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", function () {
             showEditForm(assetId);
         }
         if (action === "save-edit") await saveAssetEdit(assetId);
+        if (action === "refresh-prices") await refreshAssetPrices(assetId);
         if (action === "cancel-edit") hideEditForm(assetId);
     });
 

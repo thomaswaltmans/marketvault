@@ -936,9 +936,9 @@ function renderDividendsMonthlyChart() {
         type: "bar",
         name: "Dividends",
         marker: {
-            color: "rgba(220, 38, 38, 0.68)",
+            color: "rgba(36, 153, 23, 0.7)",
             line: {
-                color: "rgba(185, 28, 28, 0.95)",
+                color: "rgba(37, 125, 18, 0.85)",
                 width: 1,
             },
         },
