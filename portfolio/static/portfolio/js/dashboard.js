@@ -264,6 +264,7 @@ async function loadGrowthChartWithRetry(attempt = 1) {
 
 function renderGrowthChart(data) {
     const showLegend = !isNarrowMobileViewport();
+    const disableChartInteractions = isNarrowMobileViewport();
     const traces = [
         {
             x: data.dates,
@@ -325,10 +326,12 @@ function renderGrowthChart(data) {
             range: xRange,
             tickformat: "%b '%y",
             rangeslider: { visible: false },
+            fixedrange: disableChartInteractions,
         },
         yaxis: {
             ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
+            fixedrange: disableChartInteractions,
         },
         showlegend: showLegend,
         legend: showLegend ? {
@@ -935,6 +938,7 @@ async function loadAssetGrowthChartWithRetry(attempt = 1) {
 function renderAssetGrowthChart() {
     if (!assetGrowthData) return;
     const showLegend = !isNarrowMobileViewport();
+    const disableChartInteractions = isNarrowMobileViewport();
 
     const selectEl = getElement("#asset-growth-select");
     const chartEl = getElement("#chart-asset-growth");
@@ -1002,10 +1006,12 @@ function renderAssetGrowthChart() {
             range: xRange,
             tickformat: "%b '%y",
             rangeslider: { visible: false },
+            fixedrange: disableChartInteractions,
         },
         yaxis: {
             ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
+            fixedrange: disableChartInteractions,
         },
         showlegend: showLegend,
         legend: showLegend ? {
@@ -1136,6 +1142,7 @@ async function loadDividendsMonthlyChartWithRetry(attempt = 1) {
 
 function renderDividendsMonthlyChart() {
     if (!dividendsMonthlyData) return;
+    const disableChartInteractions = isNarrowMobileViewport();
 
     const dates = dividendsMonthlyData.dates || [];
     const dividends = dividendsMonthlyData.dividends || [];
@@ -1179,6 +1186,7 @@ function renderDividendsMonthlyChart() {
             tickformat: "%b '%y",
             ticklabelmode: "period",
             automargin: true,
+            fixedrange: disableChartInteractions,
         },
         yaxis: {
             ...getChartAxisStyle("y"),
