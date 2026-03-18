@@ -1060,6 +1060,16 @@ body{
   #view-dashboard .performance-column{
     padding: 12px;
   }
+  #view-dashboard .performance-item-main{
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+  #view-dashboard .performance-item-symbol{
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   #view-dashboard .performance-item-type{
     display: none;
   }
