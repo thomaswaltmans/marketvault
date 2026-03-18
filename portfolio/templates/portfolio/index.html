@@ -77,44 +77,57 @@
     </div>
     <div class="grid">
       <div class="card card-overview card-overview-main span-6">
-        <div class="card-title-block">
-          <span class="card-eyebrow">Overview</span>
+        <div class="overview-header">
+          <div class="card-title-block">
+            <span class="card-eyebrow">Overview</span>
+          </div>
+          <div class="overview-selector" id="overview-selector">
+            <button
+              id="btn-overview-selector"
+              class="overview-selector-button"
+              type="button"
+              aria-expanded="false"
+              aria-label="Choose overview cards"
+              title="Choose overview cards"
+            ></button>
+            <div id="overview-selector-menu" class="overview-selector-menu" hidden></div>
+          </div>
         </div>
         <div class="stats-grid-wrap">
         <div class="stats-grid">
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="portfolio-value">
             <div class="stat-label">Portfolio Value</div>
             <div id="metric-portfolio-value" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="total-invested">
             <div class="stat-label">Total Invested</div>
             <div id="metric-total-invested" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="unrealized-pl">
             <div class="stat-label">Unrealized P/L</div>
             <div id="metric-unrealized-pl" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="total-roi">
             <div class="stat-label">Total ROI</div>
             <div id="metric-total-roi" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="ytd-roi">
             <div class="stat-label">YTD ROI</div>
             <div id="metric-ytd-roi" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="dividend-yield">
             <div class="stat-label">Dividend Yield (TTM)</div>
             <div id="metric-dividend-yield" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="best-performer">
             <div class="stat-label">Best Performer</div>
             <div id="metric-best-performer" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="worst-performer">
             <div class="stat-label">Worst Performer</div>
             <div id="metric-worst-performer" class="stat-value">-</div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" data-overview-key="top-dividend-asset">
             <div class="stat-label">Top Dividend Asset</div>
             <div id="metric-top-dividend-asset" class="stat-value">-</div>
           </div>

@@ -95,6 +95,20 @@
   gap: 14px;
 }
 
+.app-footer{
+  max-width: 1180px;
+  margin: 24px auto 18px;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.app-footer p{
+  margin: 0;
+  font-size: 0.78rem;
+  color: #93a09c;
+  letter-spacing: 0.02em;
+}
+
 #asset-search{
   width: min(100%, 420px);
 }
@@ -930,6 +944,75 @@ body{
   flex-direction: column;
 }
 
+#view-dashboard .overview-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#view-dashboard .overview-selector{
+  display: none;
+  position: relative;
+}
+
+#view-dashboard .overview-selector-button{
+  position: relative;
+  border: 1px solid rgba(17,24,39,0.08);
+  border-radius: 12px;
+  background: #f6f8f7;
+  color: var(--text);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#view-dashboard .overview-selector-button::before{
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+#view-dashboard .overview-selector-button[aria-expanded="true"]::before{
+  transform: translateY(1px) rotate(225deg);
+}
+
+#view-dashboard .overview-selector-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(17,24,39,0.08);
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 16px 32px rgba(17,24,39,0.12);
+  backdrop-filter: blur(10px);
+}
+
+#view-dashboard .overview-selector-option{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+#view-dashboard .overview-selector-option input{
+  margin: 0;
+}
+
 #view-dashboard .card-overview .stats-grid-wrap{
   flex: 1;
   display: flex;
@@ -1017,20 +1100,34 @@ body{
     height: 260px;
   }
   #chart-growth,
-  #chart-asset-growth{
-    min-height: 250px;
-    height: 250px;
+  #chart-asset-growth,
+  #chart-dividends-monthly{
+    min-height: 210px;
+    height: 210px;
   }
   #view-dashboard .allocation-legend{
     border-left: 0;
     border-top: 1px dashed rgba(17,24,39,0.12);
     padding-left: 0;
     padding-top: 10px;
+    width: 100%;
+    max-width: 260px;
+    max-height: 130px;
+    margin: 0 auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #view-dashboard .allocation-legend::-webkit-scrollbar{
+    display: none;
   }
   .js-plotly-plot .plotly .modebar{
     display: none !important;
   }
   #view-dashboard .stats-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-footer p{
+    font-size: 0.72rem;
+  }
 }
 
 @media (max-width: 620px){
@@ -1043,15 +1140,28 @@ body{
     align-items: center;
     justify-content: space-between;
   }
-  #view-dashboard .card-head-row,
-  #view-dashboard .card-chart-header{
+  #view-dashboard .card-head-row{
     flex-direction: column;
     align-items: stretch;
+  }
+  #view-dashboard .card-chart-header{
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
   #view-dashboard .allocation-header{
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+  }
+  #view-dashboard .chart-controls{
+    justify-content: flex-end;
+  }
+  #view-dashboard .chart-toolbar{
+    justify-content: flex-end;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: nowrap;
   }
   #view-dashboard .performance-board{
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1077,15 +1187,34 @@ body{
   #view-dashboard .performance-item-type{
     display: none;
   }
+  #view-dashboard .overview-selector{
+    display: block;
+    margin: 0;
+  }
   #view-dashboard .card-overview .stats-grid-wrap{
     align-items: flex-start;
     margin-top: 8px;
   }
-  #view-dashboard .card-overview .stats-grid .stat-item:nth-child(9){
-    display: none;
+  #view-dashboard .stat-item{
+    min-height: 72px;
+    padding: 12px;
   }
-  #view-dashboard .chart-toolbar{
-    justify-content: flex-start;
+  #view-dashboard .stat-label{
+    font-size: 0.61rem;
+    margin-bottom: 5px;
+  }
+  #view-dashboard .stat-value{
+    font-size: 0.96rem;
+  }
+  #view-dashboard .card-chart .chart{
+    min-height: 210px;
+    height: 210px;
+  }
+  #chart-growth,
+  #chart-asset-growth,
+  #chart-dividends-monthly{
+    min-height: 210px;
+    height: 210px;
   }
   .sensitive-toggle,
   #view-dashboard .allocation-toggle{
@@ -1095,7 +1224,21 @@ body{
   }
   #asset-growth-select{
     min-width: 0;
-    width: 100%;
+    width: 38px;
+    max-width: 38px;
+    flex: 0 0 38px;
+    min-height: 30px;
+    height: 30px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    padding-right: 24px;
+    color: transparent;
+    font-size: 0;
+    text-indent: -9999px;
+    background-position:
+      calc(100% - 14px) calc(50% - 2px),
+      calc(100% - 9px) calc(50% - 2px);
   }
   #view-dashboard .stats-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

@@ -11,6 +11,8 @@ let winnersLosersData = null;
 let hideSensitiveValues = false;
 let overviewMetricsSnapshot = null;
 let sensitiveToggleInitialized = false;
+let overviewSelectorInitialized = false;
+let overviewMetricSelection = [];
 let growthRangeLabel = "1Y";
 let assetGrowthRangeLabel = "1Y";
 let dividendsRangeLabel = "1Y";
@@ -25,6 +27,25 @@ const ALLOCATION_TYPE_COLORS = {
 };
 const SENSITIVE_MASK_TEXT = "********";
 const SENSITIVE_TOGGLE_STORAGE_KEY = "marketvault.hideSensitiveValues";
+const OVERVIEW_SELECTION_STORAGE_KEY = "marketvault.mobileOverviewSelection";
+const OVERVIEW_METRIC_OPTIONS = [
+    { key: "portfolio-value", label: "Portfolio Value" },
+    { key: "total-invested", label: "Total Invested" },
+    { key: "unrealized-pl", label: "Unrealized P/L" },
+    { key: "total-roi", label: "Total ROI" },
+    { key: "ytd-roi", label: "YTD ROI" },
+    { key: "dividend-yield", label: "Dividend Yield (TTM)" },
+    { key: "best-performer", label: "Best Performer" },
+    { key: "worst-performer", label: "Worst Performer" },
+    { key: "top-dividend-asset", label: "Top Dividend Asset" },
+];
+const MAX_MOBILE_OVERVIEW_METRICS = 6;
+
+function isNarrowMobileViewport() {
+    return typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 620px)").matches;
+}
 
 function getPlotlyConfig() {
     return {
@@ -72,6 +93,7 @@ function view_dashboard() {
     show("#view-dashboard");
     initializeAllocationToggle();
     initializeAllocationLegendResponsiveBehavior();
+    initializeOverviewSelector();
     initializeSensitiveToggle();
 
     requestAnimationFrame(() => {
@@ -89,6 +111,132 @@ function refreshDashboardCharts() {
     loadAssetGrowthChartWithRetry();
     loadDividendsMonthlyChartWithRetry();
     loadWinnersLosersCard();
+}
+
+function initializeOverviewSelector() {
+    if (!overviewMetricSelection.length) {
+        overviewMetricSelection = readOverviewMetricSelection();
+    }
+
+    renderOverviewSelector();
+    applyOverviewMetricVisibility();
+
+    if (overviewSelectorInitialized) return;
+
+    const selectorButton = getElement("#btn-overview-selector");
+    const selectorMenu = getElement("#overview-selector-menu");
+    const selectorRoot = getElement("#overview-selector");
+    if (!selectorButton || !selectorMenu || !selectorRoot) return;
+
+    selectorButton.addEventListener("click", () => {
+        const nextExpanded = selectorButton.getAttribute("aria-expanded") !== "true";
+        selectorButton.setAttribute("aria-expanded", String(nextExpanded));
+        selectorMenu.hidden = !nextExpanded;
+    });
+
+    selectorMenu.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+
+        const nextSelection = new Set(overviewMetricSelection);
+        if (target.checked) {
+            if (nextSelection.size >= MAX_MOBILE_OVERVIEW_METRICS) {
+                target.checked = false;
+                return;
+            }
+            nextSelection.add(target.value);
+        } else {
+            nextSelection.delete(target.value);
+        }
+
+        overviewMetricSelection = OVERVIEW_METRIC_OPTIONS
+            .map((option) => option.key)
+            .filter((key) => nextSelection.has(key))
+            .slice(0, MAX_MOBILE_OVERVIEW_METRICS);
+
+        persistOverviewMetricSelection(overviewMetricSelection);
+        renderOverviewSelector();
+        applyOverviewMetricVisibility();
+    });
+
+    document.addEventListener("click", (event) => {
+        if (!selectorRoot.contains(event.target)) {
+            selectorButton.setAttribute("aria-expanded", "false");
+            selectorMenu.hidden = true;
+        }
+    });
+
+    if (typeof window !== "undefined") {
+        window.addEventListener("resize", () => applyOverviewMetricVisibility());
+    }
+
+    overviewSelectorInitialized = true;
+}
+
+function readOverviewMetricSelection() {
+    const defaultSelection = OVERVIEW_METRIC_OPTIONS
+        .slice(0, MAX_MOBILE_OVERVIEW_METRICS)
+        .map((option) => option.key);
+
+    try {
+        const raw = localStorage.getItem(OVERVIEW_SELECTION_STORAGE_KEY);
+        if (!raw) return defaultSelection;
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return defaultSelection;
+
+        const valid = OVERVIEW_METRIC_OPTIONS
+            .map((option) => option.key)
+            .filter((key) => parsed.includes(key))
+            .slice(0, MAX_MOBILE_OVERVIEW_METRICS);
+
+        return valid.length ? valid : defaultSelection;
+    } catch (error) {
+        return defaultSelection;
+    }
+}
+
+function persistOverviewMetricSelection(selection) {
+    try {
+        localStorage.setItem(OVERVIEW_SELECTION_STORAGE_KEY, JSON.stringify(selection));
+    } catch (error) {
+        // Ignore storage failures.
+    }
+}
+
+function renderOverviewSelector() {
+    const selectorButton = getElement("#btn-overview-selector");
+    const selectorMenu = getElement("#overview-selector-menu");
+    if (!selectorButton || !selectorMenu) return;
+
+    const selectionSummary = `${overviewMetricSelection.length}/${MAX_MOBILE_OVERVIEW_METRICS} selected`;
+    selectorButton.setAttribute("aria-label", `Choose overview cards (${selectionSummary})`);
+    selectorButton.title = `Choose overview cards (${selectionSummary})`;
+
+    const selectedSet = new Set(overviewMetricSelection);
+    const disableUnchecked = selectedSet.size >= MAX_MOBILE_OVERVIEW_METRICS;
+    selectorMenu.innerHTML = OVERVIEW_METRIC_OPTIONS
+        .map((option) => {
+            const checked = selectedSet.has(option.key);
+            const disabled = !checked && disableUnchecked ? "disabled" : "";
+            return `
+                <label class="overview-selector-option">
+                    <input type="checkbox" value="${option.key}" ${checked ? "checked" : ""} ${disabled}>
+                    <span>${option.label}</span>
+                </label>
+            `;
+        })
+        .join("");
+}
+
+function applyOverviewMetricVisibility() {
+    const isMobile = isNarrowMobileViewport();
+    const selectedSet = new Set(overviewMetricSelection);
+    document.querySelectorAll("#view-dashboard .stats-grid .stat-item").forEach((item) => {
+        const key = item.dataset.overviewKey;
+        const shouldShow = !isMobile || selectedSet.has(key);
+        item.hidden = !shouldShow;
+    });
 }
 
 async function loadGrowthChartWithRetry(attempt = 1) {
@@ -115,6 +263,7 @@ async function loadGrowthChartWithRetry(attempt = 1) {
 }
 
 function renderGrowthChart(data) {
+    const showLegend = !isNarrowMobileViewport();
     const traces = [
         {
             x: data.dates,
@@ -156,10 +305,16 @@ function renderGrowthChart(data) {
         { count: 5, label: "5Y", step: "year", stepmode: "backward" },
         { step: "all", label: "ALL" },
     ];
-    const activeRange = rangeButtons.find((button) => button.label === growthRangeLabel) || rangeButtons[2];
+    const visibleRangeButtons = isNarrowMobileViewport()
+        ? rangeButtons.filter((button) => button.label !== "5Y")
+        : rangeButtons;
+    const activeRange =
+        visibleRangeButtons.find((button) => button.label === growthRangeLabel) ||
+        visibleRangeButtons[2] ||
+        visibleRangeButtons[visibleRangeButtons.length - 1];
     const xRange = computeRangeFromButton(dates[0], dates[dates.length - 1], activeRange);
 
-    renderChartRangeControls("chart-growth-controls", rangeButtons, activeRange.label, (label) => {
+    renderChartRangeControls("chart-growth-controls", visibleRangeButtons, activeRange.label, (label) => {
         growthRangeLabel = label;
         if (growthChartData) renderGrowthChart(growthChartData);
     });
@@ -175,13 +330,14 @@ function renderGrowthChart(data) {
             ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
         },
-        legend: {
+        showlegend: showLegend,
+        legend: showLegend ? {
             orientation: "v",
             x: 0,
             y: 1,
             xanchor: "left",
             yanchor: "top",
-        },
+        } : undefined,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
@@ -778,6 +934,7 @@ async function loadAssetGrowthChartWithRetry(attempt = 1) {
 
 function renderAssetGrowthChart() {
     if (!assetGrowthData) return;
+    const showLegend = !isNarrowMobileViewport();
 
     const selectEl = getElement("#asset-growth-select");
     const chartEl = getElement("#chart-asset-growth");
@@ -796,6 +953,9 @@ function renderAssetGrowthChart() {
     selectEl.value = selectedSymbol;
 
     const selected = series.find((item) => item.symbol === selectedSymbol) || series[0];
+    const selectedLabel = getAssetDisplayLabel(selected);
+    selectEl.title = selectedLabel;
+    selectEl.setAttribute("aria-label", `Selected asset: ${selectedLabel}`);
     const startIndex = getAssetSeriesStartIndex(dates, selected.value, selected.invested);
     const selectedDates = dates.slice(startIndex);
     const selectedValue = selected.value.slice(startIndex);
@@ -803,13 +963,16 @@ function renderAssetGrowthChart() {
     const assetStartDate = selectedDates[0] || dates[0];
     const lastDate = selectedDates[selectedDates.length - 1] || dates[dates.length - 1];
     const rangeConfig = buildAssetRangeSelector(assetStartDate, lastDate);
+    const visibleRangeButtons = isNarrowMobileViewport()
+        ? rangeConfig.buttons.filter((button) => button.label !== "5Y")
+        : rangeConfig.buttons;
     const activeRange =
-        rangeConfig.buttons.find((button) => button.label === assetGrowthRangeLabel) ||
-        rangeConfig.buttons[rangeConfig.activeIndex] ||
-        rangeConfig.buttons[0];
+        visibleRangeButtons.find((button) => button.label === assetGrowthRangeLabel) ||
+        visibleRangeButtons[rangeConfig.activeIndex] ||
+        visibleRangeButtons[0];
     const xRange = computeRangeFromButton(assetStartDate, lastDate, activeRange);
 
-    renderChartRangeControls("chart-asset-growth-controls", rangeConfig.buttons, activeRange.label, (label) => {
+    renderChartRangeControls("chart-asset-growth-controls", visibleRangeButtons, activeRange.label, (label) => {
         assetGrowthRangeLabel = label;
         renderAssetGrowthChart();
     });
@@ -844,13 +1007,14 @@ function renderAssetGrowthChart() {
             ...getChartAxisStyle("y"),
             showticklabels: !hideSensitiveValues,
         },
-        legend: {
+        showlegend: showLegend,
+        legend: showLegend ? {
             orientation: "v",
             x: 0,
             y: 1,
             xanchor: "left",
             yanchor: "top",
-        },
+        } : undefined,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
@@ -1134,7 +1298,7 @@ function renderWinnersLosersCard() {
 
     const winners = (winnersLosersData.winners || []).filter((item) => Number(item.return_pct) > 0);
     const losers = (winnersLosersData.losers || []).filter((item) => Number(item.return_pct) < 0);
-    const targetRows = 6;
+    const targetRows = isNarrowMobileViewport() ? 5 : 6;
 
     const renderItems = (items, emptyText) => {
         const rows = [];
