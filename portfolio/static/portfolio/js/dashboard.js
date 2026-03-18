@@ -715,13 +715,15 @@ function getAssetDisplayLabel(item, options = {}) {
     const { prefer = "short" } = options;
     if (!item) return "-";
 
+    const ticker = typeof item.ticker === "string" ? item.ticker.trim() : "";
     const shortName = typeof item.short_name === "string" ? item.short_name.trim() : "";
     const name = typeof item.name === "string" ? item.name.trim() : "";
     const symbol = typeof item.symbol === "string" ? item.symbol.trim() : "";
 
+    if (prefer === "ticker") return ticker || shortName || name || symbol || "-";
     if (prefer === "symbol") return symbol || shortName || name || "-";
     if (prefer === "name") return name || shortName || symbol || "-";
-    return shortName || name || symbol || "-";
+    return shortName || ticker || name || symbol || "-";
 }
 
 function formatAssetPercentMetric(item, valueKey) {
@@ -1133,6 +1135,7 @@ function renderWinnersLosersCard() {
     const winners = (winnersLosersData.winners || []).filter((item) => Number(item.return_pct) > 0);
     const losers = (winnersLosersData.losers || []).filter((item) => Number(item.return_pct) < 0);
     const targetRows = 6;
+    const useTickerLabels = window.matchMedia("(max-width: 620px)").matches;
 
     const renderItems = (items, emptyText) => {
         const rows = [];
@@ -1144,7 +1147,7 @@ function renderWinnersLosersCard() {
                 ...items.slice(0, targetRows).map((item) => `
                 <div class="performance-item">
                     <div class="performance-item-main">
-                        <span class="performance-item-symbol">${getAssetDisplayLabel(item, { prefer: "symbol" })}</span>
+                        <span class="performance-item-symbol">${getAssetDisplayLabel(item, { prefer: useTickerLabels ? "ticker" : "symbol" })}</span>
                         <span class="performance-item-type">${item.asset_type}</span>
                     </div>
                     <div class="performance-item-value ${Number(item.return_pct) >= 0 ? "metric-positive" : "metric-negative"}">

@@ -19,6 +19,7 @@ def _asset_metadata_map(user, data_symbols):
 
         metadata[asset.data_symbol] = {
             "asset_type": asset.asset_type,
+            "ticker": ticker or asset.data_symbol,
             "name": name or ticker or asset.data_symbol,
             "short_name": short_name or name or ticker or asset.data_symbol,
         }
@@ -181,12 +182,14 @@ def _asset_insights(df, holdings, prices, asset_metadata=None):
         worst_meta = (asset_metadata or {}).get(worst_symbol, {})
         best = {
             "symbol": best_symbol,
+            "ticker": best_meta.get("ticker", best_symbol),
             "short_name": best_meta.get("short_name", best_symbol),
             "name": best_meta.get("name", best_symbol),
             "roi_pct": float(roi_clean.loc[best_symbol]),
         }
         worst = {
             "symbol": worst_symbol,
+            "ticker": worst_meta.get("ticker", worst_symbol),
             "short_name": worst_meta.get("short_name", worst_symbol),
             "name": worst_meta.get("name", worst_symbol),
             "roi_pct": float(roi_clean.loc[worst_symbol]),
@@ -214,6 +217,7 @@ def _asset_insights(df, holdings, prices, asset_metadata=None):
         top_meta = (asset_metadata or {}).get(top_symbol, {})
         top_dividend_asset = {
             "symbol": top_symbol,
+            "ticker": top_meta.get("ticker", top_symbol),
             "short_name": top_meta.get("short_name", top_symbol),
             "name": top_meta.get("name", top_symbol),
             "dividend_yield_ttm_pct": float(div_clean.loc[top_symbol]),
@@ -473,6 +477,7 @@ def asset_growth_payload(user):
 
         series.append({
             "symbol": symbol,
+            "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
             "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
             "name": asset_metadata.get(symbol, {}).get("name", symbol),
             "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
@@ -602,6 +607,7 @@ def winners_losers_payload(user, period="M", limit=6):
         return_pct = ((float(end_price) - float(start_price)) / float(start_price)) * 100
         rows.append({
             "symbol": symbol,
+            "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
             "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
             "name": asset_metadata.get(symbol, {}).get("name", symbol),
             "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
