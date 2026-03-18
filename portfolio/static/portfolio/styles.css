@@ -1039,20 +1039,31 @@ body{
     align-items: stretch;
   }
   .dashboard-header{
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
-  #view-dashboard .allocation-header,
   #view-dashboard .card-head-row,
   #view-dashboard .card-chart-header{
     flex-direction: column;
     align-items: stretch;
+  }
+  #view-dashboard .allocation-header{
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
   #view-dashboard .performance-board{
     grid-template-columns: 1fr;
   }
   #view-dashboard .chart-toolbar{
     justify-content: flex-start;
+  }
+  .sensitive-toggle,
+  #view-dashboard .allocation-toggle{
+    align-self: flex-start;
+    width: auto;
+    max-width: 100%;
   }
   #asset-growth-select{
     min-width: 0;

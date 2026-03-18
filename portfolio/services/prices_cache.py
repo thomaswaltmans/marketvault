@@ -1,11 +1,14 @@
 import pandas as pd
 from datetime import timedelta
+import logging
 import time
 from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from portfolio.models import Asset, PricePoint
 from portfolio.services.prices_yahoo import download_close_prices
+
+logger = logging.getLogger(__name__)
 
 
 def _download_with_retries(symbols, start_date, end_date, retries=3):
@@ -48,6 +51,32 @@ def _has_suspicious_jump(cached_dates_to_close):
     return False
 
 
+def _series_from_cached_dates(cached_dates_to_close):
+    if not cached_dates_to_close:
+        return pd.Series(dtype=float)
+
+    series = pd.Series(cached_dates_to_close, dtype=float)
+    series.index = pd.to_datetime(series.index)
+    return series.sort_index()
+
+
+def _series_matches_other_symbol(series, other_series, min_overlap=5, tolerance=1e-6):
+    if series is None or other_series is None or series.empty or other_series.empty:
+        return False
+
+    common_index = series.index.intersection(other_series.index)
+    if len(common_index) < min_overlap:
+        return False
+
+    left = series.reindex(common_index).astype(float)
+    right = other_series.reindex(common_index).astype(float)
+    valid_mask = left.notna() & right.notna()
+    if int(valid_mask.sum()) < min_overlap:
+        return False
+
+    return bool(((left[valid_mask] - right[valid_mask]).abs() <= tolerance).all())
+
+
 def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force_refresh_symbols=None):
     """
     Returns DataFrame with:
@@ -78,6 +107,13 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
         return pd.DataFrame()
 
     symbol_to_asset = {a.data_symbol: a for a in assets}
+    reference_assets = list(assets)
+    if user is not None:
+        reference_assets.extend(
+            Asset.objects
+            .filter(user=user)
+            .exclude(id__in=[asset.id for asset in assets])
+        )
 
     # ---- 1) Load cached points
     cached_points = (
@@ -89,6 +125,20 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
     cached_map = {}
     for p in cached_points:
         cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
+
+    reference_cached_points = (
+        PricePoint.objects
+        .filter(asset__in=reference_assets, date__gte=start, date__lt=end)
+        .select_related("asset")
+    )
+    reference_cached_map = {}
+    for p in reference_cached_points:
+        reference_cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
+
+    cached_series_by_symbol = {
+        asset.data_symbol: _series_from_cached_dates(reference_cached_map.get(asset.id, {}))
+        for asset in reference_assets
+    }
 
     # ---- 2) Determine if we need to fetch anything
     # Never require "all calendar dates" because markets are closed on many days.
@@ -117,6 +167,8 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
 
     # ---- 3) Fetch missing/stale symbols and save
     if fetch_jobs:
+        downloaded_series = {}
+        download_metadata = {}
         rows_to_create = []
         delete_ranges = []
         for symbol, job_start, job_end in fetch_jobs:
@@ -133,7 +185,50 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
             if not asset:
                 continue
 
-            delete_ranges.append((asset, pd.to_datetime(job_start).date(), pd.to_datetime(job_end).date()))
+            downloaded_series[symbol] = series.astype(float)
+            download_metadata[symbol] = (
+                asset,
+                pd.to_datetime(job_start).date(),
+                pd.to_datetime(job_end).date(),
+            )
+
+        invalid_symbols = set()
+
+        for symbol, series in downloaded_series.items():
+            for other_symbol, other_series in cached_series_by_symbol.items():
+                if other_symbol == symbol:
+                    continue
+                if _series_matches_other_symbol(series, other_series):
+                    invalid_symbols.add(symbol)
+                    logger.warning(
+                        "Skipping cache refresh for %s because the downloaded series matches cached prices for %s",
+                        symbol,
+                        other_symbol,
+                    )
+                    break
+
+        downloaded_symbols = sorted(downloaded_series.keys())
+        for idx, symbol in enumerate(downloaded_symbols):
+            if symbol in invalid_symbols:
+                continue
+            for other_symbol in downloaded_symbols[idx + 1:]:
+                if other_symbol in invalid_symbols:
+                    continue
+                if _series_matches_other_symbol(downloaded_series[symbol], downloaded_series[other_symbol]):
+                    invalid_symbols.add(symbol)
+                    invalid_symbols.add(other_symbol)
+                    logger.warning(
+                        "Skipping cache refresh for %s and %s because the downloaded series are identical",
+                        symbol,
+                        other_symbol,
+                    )
+
+        for symbol, series in downloaded_series.items():
+            if symbol in invalid_symbols:
+                continue
+
+            asset, delete_start, delete_end = download_metadata[symbol]
+            delete_ranges.append((asset, delete_start, delete_end))
 
             for dt, close in series.items():
                 d = pd.to_datetime(dt).date()
