@@ -1066,9 +1066,13 @@ body{
   }
   #view-dashboard .performance-item-symbol{
     min-width: 0;
+    font-size: 0.86rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  #view-dashboard .performance-item-value{
+    font-size: 0.82rem;
   }
   #view-dashboard .performance-item-type{
     display: none;

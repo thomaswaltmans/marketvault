@@ -1135,7 +1135,6 @@ function renderWinnersLosersCard() {
     const winners = (winnersLosersData.winners || []).filter((item) => Number(item.return_pct) > 0);
     const losers = (winnersLosersData.losers || []).filter((item) => Number(item.return_pct) < 0);
     const targetRows = 6;
-    const useTickerLabels = window.matchMedia("(max-width: 620px)").matches;
 
     const renderItems = (items, emptyText) => {
         const rows = [];
@@ -1147,7 +1146,7 @@ function renderWinnersLosersCard() {
                 ...items.slice(0, targetRows).map((item) => `
                 <div class="performance-item">
                     <div class="performance-item-main">
-                        <span class="performance-item-symbol">${getAssetDisplayLabel(item, { prefer: useTickerLabels ? "ticker" : "symbol" })}</span>
+                        <span class="performance-item-symbol">${getAssetDisplayLabel(item, { prefer: "symbol" })}</span>
                         <span class="performance-item-type">${item.asset_type}</span>
                     </div>
                     <div class="performance-item-value ${Number(item.return_pct) >= 0 ? "metric-positive" : "metric-negative"}">
