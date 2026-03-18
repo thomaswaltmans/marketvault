@@ -993,6 +993,8 @@ function renderDividendsMonthlyChart() {
         y: dividends,
         type: "bar",
         name: "Dividends",
+        xperiod: "M1",
+        xperiodalignment: "middle",
         marker: {
             color: "rgba(36, 153, 23, 0.7)",
             line: {
@@ -1009,6 +1011,8 @@ function renderDividendsMonthlyChart() {
             range: xRange,
             rangeslider: { visible: false },
             tickformat: "%b '%y",
+            ticklabelmode: "period",
+            automargin: true,
         },
         yaxis: {
             ...getChartAxisStyle("y"),
