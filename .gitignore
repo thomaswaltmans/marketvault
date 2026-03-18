@@ -8,3 +8,4 @@ db.sqlite3
 staticfiles/
 *.sqlite3
 data.json
+db.sqlite3.pricepoint-backup

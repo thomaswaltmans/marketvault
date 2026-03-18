@@ -923,7 +923,7 @@ function renderDividendsMonthlyChart() {
         rangeConfig.buttons.find((button) => button.label === dividendsRangeLabel) ||
         rangeConfig.buttons[rangeConfig.activeIndex] ||
         rangeConfig.buttons[0];
-    const xRange = computeRangeFromButton(dates[0], lastDate, activeRange);
+    const xRange = computeBarChartRange(dates, computeRangeFromButton(dates[0], lastDate, activeRange));
 
     renderChartRangeControls("chart-dividends-monthly-controls", rangeConfig.buttons, activeRange.label, (label) => {
         dividendsRangeLabel = label;
@@ -988,6 +988,35 @@ function computeRangeFromButton(startDateString, endDateString, button) {
 
     const boundedStart = nextStart > startDate ? nextStart : startDate;
     return [boundedStart.toISOString().slice(0, 10), endDateString];
+}
+
+function computeBarChartRange(dates, baseRange) {
+    if (!Array.isArray(dates) || !dates.length || !Array.isArray(baseRange) || baseRange.length !== 2) {
+        return baseRange;
+    }
+
+    const rangeStart = new Date(baseRange[0]);
+    const rangeEnd = new Date(baseRange[1]);
+    const visibleDates = dates
+        .map((dateString) => new Date(dateString))
+        .filter((date) => !Number.isNaN(date.getTime()) && date >= rangeStart && date <= rangeEnd);
+
+    if (!visibleDates.length) {
+        return baseRange;
+    }
+
+    const defaultHalfStepMs = 15 * 24 * 60 * 60 * 1000;
+    const firstGapMs = visibleDates.length > 1
+        ? Math.max((visibleDates[1].getTime() - visibleDates[0].getTime()) / 2, 1)
+        : defaultHalfStepMs;
+    const lastGapMs = visibleDates.length > 1
+        ? Math.max((visibleDates[visibleDates.length - 1].getTime() - visibleDates[visibleDates.length - 2].getTime()) / 2, 1)
+        : defaultHalfStepMs;
+
+    return [
+        new Date(visibleDates[0].getTime() - firstGapMs).toISOString(),
+        new Date(visibleDates[visibleDates.length - 1].getTime() + lastGapMs).toISOString(),
+    ];
 }
 
 function renderChartRangeControls(containerId, buttons, activeLabel, onSelect) {
