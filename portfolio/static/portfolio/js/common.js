@@ -72,4 +72,15 @@ function setActiveNav(selector) {
 
     const activeLink = selector ? getElement(selector) : null;
     if (activeLink) activeLink.classList.add("is-active");
+
+    const mobileLabel = getElement("#mobile-nav-label");
+    if (mobileLabel && activeLink) {
+        mobileLabel.textContent = activeLink.textContent.trim();
+    }
+
+    document.querySelectorAll(".mobile-nav-option").forEach((button) => {
+        const buttonView = button.dataset.view || "";
+        const selectorView = selector ? selector.replace(/^#nav-/, "") : "";
+        button.classList.toggle("is-active", buttonView === selectorView);
+    });
 }

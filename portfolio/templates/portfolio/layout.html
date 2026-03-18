@@ -14,6 +14,21 @@
 
         <nav class="navbar navbar-expand-lg navbar-light bg-light">
             <a class="navbar-brand">MarketVault</a>
+            {% if user.is_authenticated %}
+                <div class="mobile-nav" id="mobile-nav">
+                    <button id="btn-mobile-nav" class="nav-link mobile-nav-trigger" type="button" aria-expanded="false">
+                        <span id="mobile-nav-label">Dashboard</span>
+                    </button>
+                    <div id="mobile-nav-menu" class="mobile-nav-menu" hidden>
+                        <button class="nav-link mobile-nav-option" type="button" data-view="dashboard">Dashboard</button>
+                        <button class="nav-link mobile-nav-option" type="button" data-view="assets">Assets</button>
+                        <button class="nav-link mobile-nav-option" type="button" data-view="transactions">Transactions</button>
+                        <button class="nav-link mobile-nav-option" type="button" data-view="profile">
+                            {% if user.first_name %}{{ user.first_name }}{% else %}{{ user.username }}{% endif %}
+                        </button>
+                    </div>
+                </div>
+            {% endif %}
           
             <div>
               <ul class="navbar-nav mr-auto">

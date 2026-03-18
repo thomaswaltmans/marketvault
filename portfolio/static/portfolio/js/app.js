@@ -1,16 +1,57 @@
 document.addEventListener("DOMContentLoaded", function () {
+    const mobileNavButton = getElement("#btn-mobile-nav");
+    const mobileNavMenu = getElement("#mobile-nav-menu");
+    const closeMobileNavMenu = () => {
+        if (!mobileNavButton || !mobileNavMenu) return;
+        mobileNavButton.setAttribute("aria-expanded", "false");
+        mobileNavMenu.hidden = true;
+    };
+    const toggleMobileNavMenu = () => {
+        if (!mobileNavButton || !mobileNavMenu) return;
+        const nextExpanded = mobileNavButton.getAttribute("aria-expanded") !== "true";
+        mobileNavButton.setAttribute("aria-expanded", String(nextExpanded));
+        mobileNavMenu.hidden = !nextExpanded;
+    };
+
+    mobileNavButton?.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleMobileNavMenu();
+    });
+
+    document.querySelectorAll(".mobile-nav-option").forEach((button) => {
+        button.addEventListener("click", (e) => {
+            e.preventDefault();
+            const view = button.dataset.view;
+            closeMobileNavMenu();
+
+            if (view === "dashboard") view_dashboard();
+            if (view === "assets") view_assets();
+            if (view === "transactions") view_transactions();
+            if (view === "profile") view_profile();
+        });
+    });
+
+    document.addEventListener("click", (event) => {
+        const mobileNavRoot = event.target.closest("#mobile-nav");
+        if (mobileNavRoot) return;
+        closeMobileNavMenu();
+    });
+
     getElement("#nav-profile")?.addEventListener("click", (e) => {
         e.preventDefault();
+        closeMobileNavMenu();
         view_profile();
     });
 
     getElement("#nav-dashboard").addEventListener("click", (e) => {
         e.preventDefault();
+        closeMobileNavMenu();
         view_dashboard();
     });
 
     getElement("#nav-assets").addEventListener("click", (e) => {
         e.preventDefault();
+        closeMobileNavMenu();
         view_assets();
     });
     getElement("#btn-asset-search")?.addEventListener("click", () => {
@@ -44,6 +85,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     getElement("#nav-transactions").addEventListener("click", (e) => {
         e.preventDefault();
+        closeMobileNavMenu();
         view_transactions();
     });
     getElement("#btn-new-transaction")?.addEventListener("click", () => view_transaction_form("new"));
