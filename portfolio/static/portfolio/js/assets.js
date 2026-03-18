@@ -130,6 +130,7 @@ async function createAsset() {
 
     const ticker = getElement("#asset-ticker").value.trim();
     const name = getElement("#asset-name").value.trim();
+    const shortName = getElement("#asset-short-name").value.trim();
     const assetType = getElement("#asset-type").value;
     const exchange = getElement("#asset-exchange").value.trim();
     const currency = getElement("#asset-currency").value.trim();
@@ -141,6 +142,7 @@ async function createAsset() {
         body: JSON.stringify({
             ticker: ticker,
             name: name,
+            short_name: shortName,
             asset_type: assetType,
             exchange: exchange,
             currency: currency,
@@ -156,7 +158,11 @@ async function createAsset() {
     setText("#asset-create-status", `Created ${data.ticker} (${data.data_symbol})`);
 
     getElement("#asset-ticker").value = "";
+    getElement("#asset-name").value = "";
+    getElement("#asset-short-name").value = "";
     getElement("#asset-type").value = "STOCK";
+    getElement("#asset-exchange").value = "";
+    getElement("#asset-currency").value = "";
     getElement("#asset-data-symbol").value = "";
 
     loadAssets();
@@ -179,6 +185,10 @@ async function showEditForm(assetId) {
         <div class="form-field">
             <label>Name</label>
             <input id="edit-name-${assetId}" value="${asset.name || ""}" placeholder="Name">
+        </div>
+        <div class="form-field">
+            <label>Short name</label>
+            <input id="edit-short-name-${assetId}" value="${asset.short_name || ""}" placeholder="Short name">
         </div>
         <div class="form-field">
             <label>Type</label>
@@ -206,6 +216,25 @@ async function showEditForm(assetId) {
     </div>
     <div id="edit-status-${assetId}" class="form-status"></div>
     `;
+
+    bindAssetEditKeyboardSubmit(assetId);
+}
+
+function bindAssetEditKeyboardSubmit(assetId) {
+    const container = getElement(`#asset-edit-${assetId}`);
+    if (!container) return;
+
+    container.onkeydown = async (event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const field = target.closest("input, select");
+        if (!field) return;
+
+        event.preventDefault();
+        await saveAssetEdit(assetId);
+    };
 }
 
 function hideEditForm(assetId) {
@@ -222,6 +251,7 @@ async function saveAssetEdit(assetId) {
     const payload = {
         ticker: getElement(`#edit-ticker-${assetId}`).value.trim(),
         name: getElement(`#edit-name-${assetId}`).value.trim(),
+        short_name: getElement(`#edit-short-name-${assetId}`).value.trim(),
         asset_type: getElement(`#edit-asset-type-${assetId}`).value,
         exchange: getElement(`#edit-exchange-${assetId}`).value.trim(),
         currency: getElement(`#edit-currency-${assetId}`).value.trim(),

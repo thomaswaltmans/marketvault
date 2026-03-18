@@ -2,6 +2,8 @@ let activeAllocationLoadToken = 0;
 let allocationViewMode = "assets";
 let allocationRawData = null;
 let allocationToggleInitialized = false;
+let allocationLegendResponsiveInitialized = false;
+let allocationLegendUsesAssetNames = null;
 let growthChartData = null;
 let assetGrowthData = null;
 let dividendsMonthlyData = null;
@@ -69,6 +71,7 @@ function view_dashboard() {
     setActiveNav("#nav-dashboard");
     show("#view-dashboard");
     initializeAllocationToggle();
+    initializeAllocationLegendResponsiveBehavior();
     initializeSensitiveToggle();
 
     requestAnimationFrame(() => {
@@ -338,7 +341,7 @@ function renderAllocationFromData(data) {
     Plotly.react("chart-allocation", [trace], layout, getPlotlyConfig()).then(() => {
         Plotly.Plots.resize("chart-allocation");
         setTimeout(() => Plotly.Plots.resize("chart-allocation"), 120);
-        renderAllocationLegend(labels, values, colors);
+        renderAllocationLegend(dataset, values, colors);
     });
 }
 
@@ -359,6 +362,28 @@ function initializeAllocationToggle() {
     assetsButton.addEventListener("click", () => setMode("assets"));
     typesButton.addEventListener("click", () => setMode("types"));
     allocationToggleInitialized = true;
+}
+
+function initializeAllocationLegendResponsiveBehavior() {
+    if (allocationLegendResponsiveInitialized) return;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 900px)");
+    const syncLegendLabels = () => {
+        const nextUsesAssetNames = mediaQuery.matches;
+        if (allocationLegendUsesAssetNames === nextUsesAssetNames) return;
+        allocationLegendUsesAssetNames = nextUsesAssetNames;
+        if (allocationRawData) renderAllocationFromData(allocationRawData);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.addEventListener("change", syncLegendLabels);
+    } else if (typeof mediaQuery.addListener === "function") {
+        mediaQuery.addListener(syncLegendLabels);
+    }
+
+    allocationLegendResponsiveInitialized = true;
+    syncLegendLabels();
 }
 
 function initializeSensitiveToggle() {
@@ -441,12 +466,16 @@ function getAllocationDataset(data, mode) {
     const labels = data.labels || [];
     const values = (data.values || []).map((value) => Number(value) || 0);
     const assetTypes = data.asset_types || [];
+    const assetNames = data.asset_names || [];
+    const assetShortNames = data.asset_short_names || [];
 
     if (mode !== "types") {
         return {
             labels: labels,
             values: values,
             assetTypes: assetTypes,
+            assetNames: assetNames,
+            assetShortNames: assetShortNames,
             mode: "assets",
         };
     }
@@ -494,12 +523,13 @@ function generateMutedCategoryPalette(count) {
     });
 }
 
-function renderAllocationLegend(labels, values, colors) {
+function renderAllocationLegend(dataset, values, colors) {
     const legendEl = getElement("#allocation-legend");
     if (!legendEl) return;
 
+    const legendLabels = getAllocationLegendLabels(dataset);
     const total = values.reduce((sum, value) => sum + Number(value || 0), 0);
-    legendEl.innerHTML = labels
+    legendEl.innerHTML = legendLabels
         .map((label, i) => {
             const value = Number(values[i]) || 0;
             const pct = total > 0 ? (value / total) * 100 : 0;
@@ -515,6 +545,20 @@ function renderAllocationLegend(labels, values, colors) {
             `;
         })
         .join("");
+}
+
+function getAllocationLegendLabels(dataset) {
+    if (!dataset || !Array.isArray(dataset.labels)) return [];
+    if (dataset.mode !== "assets") return dataset.labels;
+
+    const assetNames = Array.isArray(dataset.assetNames) ? dataset.assetNames : [];
+    const assetShortNames = Array.isArray(dataset.assetShortNames) ? dataset.assetShortNames : [];
+    const useFullNames = window.matchMedia("(max-width: 900px)").matches;
+
+    return dataset.labels.map((label, index) => {
+        if (useFullNames) return assetNames[index] || label;
+        return assetShortNames[index] || label;
+    });
 }
 
 function updateOverviewMetrics(data) {
@@ -667,11 +711,25 @@ function formatPercent(value, options = {}) {
     return `${prefix}${value.toFixed(2)}%`;
 }
 
+function getAssetDisplayLabel(item, options = {}) {
+    const { prefer = "short" } = options;
+    if (!item) return "-";
+
+    const shortName = typeof item.short_name === "string" ? item.short_name.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const symbol = typeof item.symbol === "string" ? item.symbol.trim() : "";
+
+    if (prefer === "symbol") return symbol || shortName || name || "-";
+    if (prefer === "name") return name || shortName || symbol || "-";
+    return shortName || name || symbol || "-";
+}
+
 function formatAssetPercentMetric(item, valueKey) {
     if (!item || !item.symbol) return "-";
     const value = Number(item[valueKey]);
-    if (!Number.isFinite(value)) return item.symbol;
-    return `${item.symbol} (${formatPercent(value)})`;
+    const label = getAssetDisplayLabel(item, { prefer: "symbol" });
+    if (!Number.isFinite(value)) return label;
+    return `${label} (${formatPercent(value)})`;
 }
 
 function setMetricTextWithTone(selector, text, numericValue) {
@@ -729,7 +787,7 @@ function renderAssetGrowthChart() {
 
     const currentValue = selectEl.value;
     selectEl.innerHTML = series
-        .map((item) => `<option value="${item.symbol}">${item.symbol} (${item.asset_type})</option>`)
+        .map((item) => `<option value="${item.symbol}">${getAssetDisplayLabel(item)} (${item.asset_type})</option>`)
         .join("");
 
     const selectedSymbol = series.some((item) => item.symbol === currentValue) ? currentValue : series[0].symbol;
@@ -760,7 +818,7 @@ function renderAssetGrowthChart() {
             y: selectedValue,
             type: "scatter",
             mode: "lines",
-            name: `${selected.symbol}`,
+            name: getAssetDisplayLabel(selected, { prefer: "symbol" }),
             line: { color: "#1f77b4", width: 1.5 },
         },
         {
@@ -1082,7 +1140,7 @@ function renderWinnersLosersCard() {
                 ...items.slice(0, targetRows).map((item) => `
                 <div class="performance-item">
                     <div class="performance-item-main">
-                        <span class="performance-item-symbol">${item.symbol}</span>
+                        <span class="performance-item-symbol">${getAssetDisplayLabel(item, { prefer: "symbol" })}</span>
                         <span class="performance-item-type">${item.asset_type}</span>
                     </div>
                     <div class="performance-item-value ${Number(item.return_pct) >= 0 ? "metric-positive" : "metric-negative"}">

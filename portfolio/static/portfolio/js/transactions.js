@@ -1,6 +1,7 @@
 let editingTransactionId = null;
 let activeTransactionAssetFilterId = "";
 let transactionMenusBound = false;
+let transactionFormKeyboardBound = false;
 
 function getTransactionTypePillClass(txnType) {
     return `transaction-pill-${String(txnType || "").toLowerCase()}`;
@@ -38,6 +39,28 @@ async function view_transaction_form(mode, txn = null) {
 
     loadAssetsIntoSelect(txn ? txn.asset_id : null);
     updateTxnFieldVisibility();
+    bindTransactionFormKeyboardSubmit();
+}
+
+function bindTransactionFormKeyboardSubmit() {
+    if (transactionFormKeyboardBound) return;
+
+    const formView = getElement("#view-transaction-form");
+    if (!formView) return;
+
+    formView.addEventListener("keydown", async (event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const field = target.closest("input, select");
+        if (!field) return;
+
+        event.preventDefault();
+        await saveTransaction();
+    });
+
+    transactionFormKeyboardBound = true;
 }
 
 function formatTxnQuantity(quantity) {

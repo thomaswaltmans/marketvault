@@ -6,6 +6,26 @@ from portfolio.models import Asset, Transaction
 from portfolio.services.prices_cache import get_close_prices_cached
 
 
+def _asset_metadata_map(user, data_symbols):
+    symbols = [symbol for symbol in data_symbols if symbol]
+    if not symbols:
+        return {}
+
+    metadata = {}
+    for asset in Asset.objects.filter(user=user, data_symbol__in=symbols):
+        name = asset.name.strip() if asset.name else ""
+        short_name = asset.short_name.strip() if asset.short_name else ""
+        ticker = asset.ticker or ""
+
+        metadata[asset.data_symbol] = {
+            "asset_type": asset.asset_type,
+            "name": name or ticker or asset.data_symbol,
+            "short_name": short_name or name or ticker or asset.data_symbol,
+        }
+
+    return metadata
+
+
 def _transactions_dataframe(user):
     """
     Build a DataFrame from DB transactions.
@@ -116,7 +136,7 @@ def _invested_timeseries(df):
     return daily
 
 
-def _asset_insights(df, holdings, prices):
+def _asset_insights(df, holdings, prices, asset_metadata=None):
     if df.empty or holdings.empty or prices.empty:
         return {"best_performer": None, "worst_performer": None, "top_dividend_asset": None}
 
@@ -157,8 +177,20 @@ def _asset_insights(df, holdings, prices):
     if not roi_clean.empty:
         best_symbol = roi_clean.idxmax()
         worst_symbol = roi_clean.idxmin()
-        best = {"symbol": best_symbol, "roi_pct": float(roi_clean.loc[best_symbol])}
-        worst = {"symbol": worst_symbol, "roi_pct": float(roi_clean.loc[worst_symbol])}
+        best_meta = (asset_metadata or {}).get(best_symbol, {})
+        worst_meta = (asset_metadata or {}).get(worst_symbol, {})
+        best = {
+            "symbol": best_symbol,
+            "short_name": best_meta.get("short_name", best_symbol),
+            "name": best_meta.get("name", best_symbol),
+            "roi_pct": float(roi_clean.loc[best_symbol]),
+        }
+        worst = {
+            "symbol": worst_symbol,
+            "short_name": worst_meta.get("short_name", worst_symbol),
+            "name": worst_meta.get("name", worst_symbol),
+            "roi_pct": float(roi_clean.loc[worst_symbol]),
+        }
 
     cutoff = pd.to_datetime((timezone.now() - timezone.timedelta(days=365)).date())
     ttm_div = (
@@ -179,8 +211,11 @@ def _asset_insights(df, holdings, prices):
     div_clean = div_yield_by_asset.dropna()
     if not div_clean.empty:
         top_symbol = div_clean.idxmax()
+        top_meta = (asset_metadata or {}).get(top_symbol, {})
         top_dividend_asset = {
             "symbol": top_symbol,
+            "short_name": top_meta.get("short_name", top_symbol),
+            "name": top_meta.get("name", top_symbol),
             "dividend_yield_ttm_pct": float(div_clean.loc[top_symbol]),
         }
 
@@ -257,6 +292,7 @@ def growth_payload(user):
 
     # Keep holdings only for symbols we have prices for
     holdings = holdings.reindex(columns=prices.columns).fillna(0)
+    asset_metadata = _asset_metadata_map(user, holdings.columns.tolist())
 
     values = holdings * prices
     total = values.sum(axis=1)
@@ -272,7 +308,7 @@ def growth_payload(user):
     )
     latest_value = float(total.iloc[-1]) if len(total) else 0.0
     dividend_yield_ttm = ((float(ttm_dividends) / latest_value) * 100) if latest_value > 0 else None
-    insights = _asset_insights(df, holdings, prices)
+    insights = _asset_insights(df, holdings, prices, asset_metadata=asset_metadata)
 
     dates = [d.strftime("%Y-%m-%d") for d in total.index]
     return {
@@ -295,17 +331,17 @@ def allocation_payload(user):
     """
     df = _transactions_dataframe(user)
     if df.empty:
-        return {"labels": [], "values": [], "asset_types": []}
+        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
 
     holdings = _holdings_timeseries(df)
     if holdings.empty:
-        return {"labels": [], "values": [], "asset_types": []}
+        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
 
     last_holdings = holdings.iloc[-1]
     last_holdings = last_holdings[last_holdings > 0]
 
     if last_holdings.empty:
-        return {"labels": [], "values": [], "asset_types": []}
+        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
 
     # pull prices for a small recent window and use last available
     start_date = (timezone.now().date() - timezone.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -319,7 +355,7 @@ def allocation_payload(user):
     )
 
     if prices.empty:
-        return {"labels": [], "values": [], "asset_types": []}
+        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
 
     # latest prices
     prices.index = pd.to_datetime(prices.index.date)
@@ -329,12 +365,21 @@ def allocation_payload(user):
     current_values = current_values[current_values > 0]
 
     if current_values.empty:
-        return {"labels": [], "values": [], "asset_types": []}
+        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
 
     type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
+    asset_metadata = _asset_metadata_map(user, current_values.index.tolist())
     type_map = {
-        asset.data_symbol: asset.asset_type
-        for asset in Asset.objects.filter(user=user, data_symbol__in=current_values.index.tolist())
+        data_symbol: metadata["asset_type"]
+        for data_symbol, metadata in asset_metadata.items()
+    }
+    name_map = {
+        data_symbol: metadata["name"]
+        for data_symbol, metadata in asset_metadata.items()
+    }
+    short_name_map = {
+        data_symbol: metadata["short_name"]
+        for data_symbol, metadata in asset_metadata.items()
     }
 
     allocation_rows = pd.DataFrame({
@@ -342,6 +387,10 @@ def allocation_payload(user):
         "value": current_values.values,
     })
     allocation_rows["asset_type"] = allocation_rows["data_symbol"].map(type_map).fillna("STOCK")
+    allocation_rows["asset_name"] = allocation_rows["data_symbol"].map(name_map)
+    allocation_rows["asset_name"] = allocation_rows["asset_name"].fillna(allocation_rows["data_symbol"])
+    allocation_rows["asset_short_name"] = allocation_rows["data_symbol"].map(short_name_map)
+    allocation_rows["asset_short_name"] = allocation_rows["asset_short_name"].fillna(allocation_rows["data_symbol"])
     allocation_rows["type_rank"] = allocation_rows["asset_type"].map(type_priority).fillna(99)
 
     allocation_rows = allocation_rows.sort_values(
@@ -353,6 +402,8 @@ def allocation_payload(user):
         "labels": allocation_rows["data_symbol"].tolist(),
         "values": [float(x) for x in allocation_rows["value"].tolist()],
         "asset_types": allocation_rows["asset_type"].tolist(),
+        "asset_names": allocation_rows["asset_name"].tolist(),
+        "asset_short_names": allocation_rows["asset_short_name"].tolist(),
     }
 
 
@@ -410,10 +461,7 @@ def asset_growth_payload(user):
     invested_by_asset = invested_by_asset.reindex(holdings.index).ffill().fillna(0)
     invested_by_asset = invested_by_asset.reindex(columns=values.columns, fill_value=0)
 
-    type_map = {
-        asset.data_symbol: asset.asset_type
-        for asset in Asset.objects.filter(user=user, data_symbol__in=values.columns.tolist())
-    }
+    asset_metadata = _asset_metadata_map(user, values.columns.tolist())
 
     type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
     series = []
@@ -425,7 +473,9 @@ def asset_growth_payload(user):
 
         series.append({
             "symbol": symbol,
-            "asset_type": type_map.get(symbol, "STOCK"),
+            "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
+            "name": asset_metadata.get(symbol, {}).get("name", symbol),
+            "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
             "value": [float(x) for x in symbol_values.values],
             "invested": [float(x) for x in symbol_invested.values],
         })
@@ -533,10 +583,7 @@ def winners_losers_payload(user, period="M", limit=6):
         return {"period": period_label, "winners": [], "losers": []}
 
     window_holdings = window_holdings.reindex(columns=prices.columns).fillna(0)
-    type_map = {
-        asset.data_symbol: asset.asset_type
-        for asset in Asset.objects.filter(user=user, data_symbol__in=prices.columns.tolist())
-    }
+    asset_metadata = _asset_metadata_map(user, prices.columns.tolist())
 
     rows = []
     latest_date = window_holdings.index[-1]
@@ -555,7 +602,9 @@ def winners_losers_payload(user, period="M", limit=6):
         return_pct = ((float(end_price) - float(start_price)) / float(start_price)) * 100
         rows.append({
             "symbol": symbol,
-            "asset_type": type_map.get(symbol, "STOCK"),
+            "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
+            "name": asset_metadata.get(symbol, {}).get("name", symbol),
+            "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
             "return_pct": float(return_pct),
         })
 

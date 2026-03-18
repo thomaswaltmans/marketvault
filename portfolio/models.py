@@ -17,6 +17,7 @@ class Asset(models.Model):
     user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="assets")
     ticker = models.CharField(max_length=20)
     name = models.CharField(max_length=120, blank=True)
+    short_name = models.CharField(max_length=60, blank=True)
     asset_type = models.CharField(max_length=10, choices=AssetType.choices, default=AssetType.STOCK)
     currency = models.CharField(max_length=10, default="EUR")
     exchange = models.CharField(max_length=40, blank=True)

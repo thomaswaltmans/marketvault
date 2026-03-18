@@ -217,6 +217,7 @@ def assets(request):
             assets = assets.filter(
                 Q(ticker__icontains=query) |
                 Q(name__icontains=query) |
+                Q(short_name__icontains=query) |
                 Q(data_symbol__icontains=query)
             )
 
@@ -226,6 +227,7 @@ def assets(request):
                 "id": asset.id,
                 "ticker": asset.ticker,
                 "name": asset.name,
+                "short_name": asset.short_name,
                 "asset_type": asset.asset_type,
                 "exchange": asset.exchange,
                 "currency": asset.currency,
@@ -243,6 +245,7 @@ def assets(request):
 
         ticker = (data.get("ticker") or "").strip().upper()
         name = (data.get("name") or "").strip()
+        short_name = (data.get("short_name") or "").strip()
         asset_type = (data.get("asset_type") or Asset.AssetType.STOCK).strip().upper()
         exchange = (data.get("exchange") or "").strip()
         currency = (data.get("currency") or "EUR").strip().upper()
@@ -263,6 +266,7 @@ def assets(request):
                 user=request.user,
                 ticker=ticker,
                 name=name,
+                short_name=short_name,
                 asset_type=asset_type,
                 exchange=exchange,
                 currency=currency,
@@ -277,6 +281,7 @@ def assets(request):
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "short_name": asset.short_name,
             "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
@@ -298,6 +303,7 @@ def asset(request, asset_id):
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "short_name": asset.short_name,
             "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
@@ -318,6 +324,9 @@ def asset(request, asset_id):
 
         if "name" in data:
             asset.name = data["name"].strip()
+
+        if "short_name" in data:
+            asset.short_name = data["short_name"].strip()
         
         if "asset_type" in data:
             next_type = data["asset_type"].strip().upper()
@@ -353,6 +362,7 @@ def asset(request, asset_id):
             "id": asset.id,
             "ticker": asset.ticker,
             "name": asset.name,
+            "short_name": asset.short_name,
             "asset_type": asset.asset_type,
             "exchange": asset.exchange,
             "currency": asset.currency,
