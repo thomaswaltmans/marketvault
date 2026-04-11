@@ -84,3 +84,10 @@ function setActiveNav(selector) {
         button.classList.toggle("is-active", buttonView === selectorView);
     });
 }
+
+function navigate(viewId, navId, onEnter) {
+    hide_all_views();
+    setActiveNav(navId);
+    show(viewId);
+    if (onEnter) onEnter();
+}

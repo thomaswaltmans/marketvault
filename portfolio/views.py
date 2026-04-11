@@ -11,6 +11,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.utils.dateparse import parse_datetime
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
 
 import json
 import logging
@@ -22,6 +23,15 @@ from .models import User, Asset, Transaction
 from .services.prices_cache import refresh_asset_price_history
 
 logger = logging.getLogger(__name__)
+
+ANALYTICS_CACHE_TIMEOUT = 300  # 5 minutes
+
+def _analytics_cache_key(user_id, endpoint):
+    return f"analytics:{user_id}:{endpoint}"
+
+def invalidate_analytics_cache(user):
+    for endpoint in ("growth", "allocation", "asset_growth", "dividends_monthly", "winners_losers"):
+        cache.delete(_analytics_cache_key(user.id, endpoint))
 
 try:
     from django_ratelimit.decorators import ratelimit
@@ -160,6 +170,7 @@ def transactions(request):
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
 
+        invalidate_analytics_cache(request.user)
         return JsonResponse(transaction.serialize(), status=201)
 
 @login_required
@@ -196,10 +207,12 @@ def transaction(request, transaction_id):
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
 
+        invalidate_analytics_cache(request.user)
         return JsonResponse(transaction.serialize())
 
     if request.method == "DELETE":
         transaction.delete()
+        invalidate_analytics_cache(request.user)
         return JsonResponse({"message": "Deleted"})
 
     return JsonResponse({"error": "GET, PUT, DELETE required"}, status=405)
@@ -358,6 +371,7 @@ def asset(request, asset_id):
         if refresh_prices:
             refresh_result = refresh_asset_price_history(asset, user=request.user)
 
+        invalidate_analytics_cache(request.user)
         return JsonResponse({
             "id": asset.id,
             "ticker": asset.ticker,
@@ -379,6 +393,7 @@ def asset(request, asset_id):
             )
 
         asset.delete()
+        invalidate_analytics_cache(request.user)
         return JsonResponse({"message": "Deleted"})
 
     return JsonResponse({"error": "GET, PUT, or DELETE required"}, status=405)
@@ -395,6 +410,7 @@ def refresh_asset_prices(request, asset_id):
         return JsonResponse({"error": "Asset not found"}, status=404)
 
     result = refresh_asset_price_history(asset, user=request.user)
+    invalidate_analytics_cache(request.user)
     return JsonResponse({
         "asset_id": asset.id,
         "data_symbol": asset.data_symbol,
@@ -698,7 +714,11 @@ def analytics_growth(request):
     except ModuleNotFoundError:
         return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
 
-    payload = growth_payload(request.user)
+    key = _analytics_cache_key(request.user.id, "growth")
+    payload = cache.get(key)
+    if payload is None:
+        payload = growth_payload(request.user)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)
 
 
@@ -712,7 +732,11 @@ def analytics_allocation(request):
     except ModuleNotFoundError:
         return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
 
-    payload = allocation_payload(request.user)
+    key = _analytics_cache_key(request.user.id, "allocation")
+    payload = cache.get(key)
+    if payload is None:
+        payload = allocation_payload(request.user)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)
 
 
@@ -726,7 +750,11 @@ def analytics_asset_growth(request):
     except ModuleNotFoundError:
         return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
 
-    payload = asset_growth_payload(request.user)
+    key = _analytics_cache_key(request.user.id, "asset_growth")
+    payload = cache.get(key)
+    if payload is None:
+        payload = asset_growth_payload(request.user)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)
 
 
@@ -740,7 +768,11 @@ def analytics_dividends_monthly(request):
     except ModuleNotFoundError:
         return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
 
-    payload = dividends_monthly_payload(request.user)
+    key = _analytics_cache_key(request.user.id, "dividends_monthly")
+    payload = cache.get(key)
+    if payload is None:
+        payload = dividends_monthly_payload(request.user)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)
 
 
@@ -754,5 +786,10 @@ def analytics_winners_losers(request):
     except ModuleNotFoundError:
         return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
 
-    payload = winners_losers_payload(request.user, period=request.GET.get("range", "M"))
+    period = request.GET.get("range", "M")
+    key = _analytics_cache_key(request.user.id, f"winners_losers:{period}")
+    payload = cache.get(key)
+    if payload is None:
+        payload = winners_losers_payload(request.user, period=period)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)

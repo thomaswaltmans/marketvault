@@ -55,29 +55,135 @@ function getPlotlyConfig() {
     };
 }
 
-function getChartAxisStyle(axis = "x") {
-    const base = {
-        title: "",
-        showline: true,
-        linecolor: "#d1d5db",
-        linewidth: 1,
-        zeroline: false,
-        showgrid: true,
-        gridcolor: "#e5e7eb",
-        tickfont: { color: "#6b7280", size: 12 },
-        tickcolor: "#d1d5db",
-        ticks: "",
+function getChartThemeColors() {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    return {
+        gridColor:    dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)",
+        tickColor:    dark ? "#8e8e93" : "#6b7280",
+        positive:     dark ? "#00c853" : "#00a844",
+        negative:     dark ? "#ff3b30" : "#e0321e",
+        investedLine: dark ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.18)",
+    };
+}
+
+// Split the portfolio line into green/red segments depending on whether it is
+// above or below the invested line. Crossover points are interpolated so the
+// colour transition happens at the exact crossing rather than one bar later.
+function buildColoredPortfolioTraces(dates, portfolioValues, investedValues, showLegend) {
+    const { positive, negative } = getChartThemeColors();
+    const traces = [];
+    let shownPositive = false;
+    let shownNegative = false;
+
+    let segDates = [];
+    let segValues = [];
+    let currentAbove = null;
+
+    const flush = (above) => {
+        if (segDates.length < 2) return;
+        const color = above ? positive : negative;
+        const alreadyShown = above ? shownPositive : shownNegative;
+        traces.push({
+            x: [...segDates],
+            y: [...segValues],
+            type: "scatter",
+            mode: "lines",
+            name: above ? "Portfolio (gain)" : "Portfolio (loss)",
+            showlegend: showLegend && !alreadyShown,
+            legendgroup: above ? "pg" : "pl",
+            line: { color, width: 2 },
+            hovertemplate: "%{x|%d %b %Y}<br>%{y:,.2f}<extra></extra>",
+        });
+        if (above) shownPositive = true; else shownNegative = true;
     };
 
-    if (axis === "x") {
-        return {
-            ...base,
-            gridcolor: "#f0f2f5",
-        };
+    for (let i = 0; i < dates.length; i++) {
+        const p   = Number(portfolioValues[i]);
+        const inv = Number(investedValues[i]);
+        if (!Number.isFinite(p) || !Number.isFinite(inv)) continue;
+
+        const above = p >= inv;
+
+        if (currentAbove === null) {
+            currentAbove = above;
+            segDates  = [dates[i]];
+            segValues = [p];
+            continue;
+        }
+
+        if (above !== currentAbove) {
+            // Interpolate the exact crossover date/value
+            const prevP   = Number(portfolioValues[i - 1]);
+            const prevInv = Number(investedValues[i - 1]);
+            const prevTs  = new Date(dates[i - 1]).getTime();
+            const currTs  = new Date(dates[i]).getTime();
+            const denom   = (p - prevP) - (inv - prevInv);
+            let crossDate  = dates[i];
+            let crossValue = p;
+            if (Math.abs(denom) > 1e-10) {
+                const t = (prevInv - prevP) / denom;
+                crossDate  = new Date(prevTs + t * (currTs - prevTs)).toISOString().slice(0, 10);
+                crossValue = prevP + t * (p - prevP);
+            }
+
+            segDates.push(crossDate);
+            segValues.push(crossValue);
+            flush(currentAbove);
+
+            currentAbove = above;
+            segDates  = [crossDate, dates[i]];
+            segValues = [crossValue, p];
+        } else {
+            segDates.push(dates[i]);
+            segValues.push(p);
+        }
     }
 
-    return base;
+    flush(currentAbove);
+    return traces;
 }
+
+function getBaseChartLayout(xAxisExtra = {}, yAxisExtra = {}, extra = {}) {
+    return {
+        xaxis: { ...getChartAxisStyle("x"), ...xAxisExtra },
+        yaxis: {
+            ...getChartAxisStyle("y"),
+            showticklabels: !hideSensitiveValues,
+            ...yAxisExtra,
+        },
+        showlegend: false,
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        margin: { t: 10, l: 10, r: hideSensitiveValues ? 12 : 52, b: 24 },
+        font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
+        ...extra,
+    };
+}
+
+function getChartAxisStyle(axis = "x") {
+    const { gridColor, tickColor } = getChartThemeColors();
+    if (axis === "y") {
+        return {
+            title: "",
+            showline: false,
+            zeroline: false,
+            showgrid: true,
+            gridcolor: gridColor,
+            tickfont: { color: tickColor, size: 11 },
+            ticks: "",
+            side: "right",
+        };
+    }
+    return {
+        title: "",
+        showline: false,
+        zeroline: false,
+        showgrid: false,
+        tickfont: { color: tickColor, size: 11 },
+        ticks: "",
+    };
+}
+
 
 function computeDefaultRangeStart(startDateString, endDateString, years = 1) {
     const startDate = new Date(startDateString);
@@ -88,20 +194,19 @@ function computeDefaultRangeStart(startDateString, endDateString, years = 1) {
 }
 
 function view_dashboard() {
-    hide_all_views();
-    setActiveNav("#nav-dashboard");
-    show("#view-dashboard");
-    initializeAllocationToggle();
-    initializeAllocationLegendResponsiveBehavior();
-    initializeOverviewSelector();
-    initializeSensitiveToggle();
+    navigate("#view-dashboard", "#nav-dashboard", () => {
+        initializeAllocationToggle();
+        initializeAllocationLegendResponsiveBehavior();
+        initializeOverviewSelector();
+        initializeSensitiveToggle();
 
-    requestAnimationFrame(() => {
-        loadGrowthChartWithRetry();
-        loadAllocationChartWithRetry();
-        loadAssetGrowthChartWithRetry();
-        loadDividendsMonthlyChartWithRetry();
-        loadWinnersLosersCard();
+        requestAnimationFrame(() => {
+            loadGrowthChartWithRetry();
+            loadAllocationChartWithRetry();
+            loadAssetGrowthChartWithRetry();
+            loadDividendsMonthlyChartWithRetry();
+            loadWinnersLosersCard();
+        });
     });
 }
 
@@ -263,30 +368,19 @@ async function loadGrowthChartWithRetry(attempt = 1) {
 }
 
 function renderGrowthChart(data) {
-    const showLegend = !isNarrowMobileViewport();
     const disableChartInteractions = isNarrowMobileViewport();
+    const { investedLine } = getChartThemeColors();
     const traces = [
-        {
-            x: data.dates,
-            y: data.portfolio_value,
-            type: "scatter",
-            mode: "lines",
-            name: "Portfolio",
-            line: {
-                color: "#1f77b4",
-                width: 1.5,
-            },
-        },
+        ...buildColoredPortfolioTraces(data.dates, data.portfolio_value, data.invested, false),
         {
             x: data.dates,
             y: data.invested,
             type: "scatter",
             mode: "lines",
             name: "Invested",
-            line: {
-                color: "skyblue",
-                width: 1.5,
-            },
+            showlegend: false,
+            line: { color: investedLine, width: 1.5, dash: "dot" },
+            hovertemplate: "%{x|%d %b %Y}<br>%{y:,.2f}<extra></extra>",
         },
     ];
 
@@ -320,32 +414,10 @@ function renderGrowthChart(data) {
         if (growthChartData) renderGrowthChart(growthChartData);
     });
 
-    const layout = {
-        xaxis: {
-            ...getChartAxisStyle("x"),
-            range: xRange,
-            tickformat: "%b '%y",
-            rangeslider: { visible: false },
-            fixedrange: disableChartInteractions,
-        },
-        yaxis: {
-            ...getChartAxisStyle("y"),
-            showticklabels: !hideSensitiveValues,
-            fixedrange: disableChartInteractions,
-        },
-        showlegend: showLegend,
-        legend: showLegend ? {
-            orientation: "v",
-            x: 0,
-            y: 1,
-            xanchor: "left",
-            yanchor: "top",
-        } : undefined,
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
-        font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
-    };
+    const layout = getBaseChartLayout(
+        { range: xRange, tickformat: "%b '%y", rangeslider: { visible: false }, fixedrange: disableChartInteractions },
+        { fixedrange: disableChartInteractions },
+    );
 
     Plotly.react("chart-growth", traces, layout, getPlotlyConfig()).then(() => {
         const chartEl = document.getElementById("chart-growth");
@@ -484,7 +556,10 @@ function renderAllocationFromData(data) {
         hovertemplate: "%{label}<br>%{percent} (%{value:.2f})<extra></extra>",
         marker: {
             colors: colors,
-            line: { color: "#fff", width: 1 },
+            line: {
+                color: document.documentElement.getAttribute("data-theme") === "dark" ? "#1c1c1e" : "#ffffff",
+                width: 1,
+            },
         },
     };
 
@@ -607,7 +682,7 @@ function applySensitiveYAxisState() {
     if (typeof Plotly === "undefined") return;
 
     const showTickLabels = !hideSensitiveValues;
-    const leftMargin = hideSensitiveValues ? 12 : 38;
+    const rightMargin = hideSensitiveValues ? 12 : 52;
     const chartIds = ["chart-growth", "chart-asset-growth", "chart-dividends-monthly"];
 
     chartIds.forEach((chartId) => {
@@ -616,7 +691,8 @@ function applySensitiveYAxisState() {
         Plotly.relayout(chartEl, {
             "yaxis.title.text": "",
             "yaxis.showticklabels": showTickLabels,
-            "margin.l": leftMargin,
+            "margin.l": 10,
+            "margin.r": rightMargin,
         });
     });
 }
@@ -981,51 +1057,25 @@ function renderAssetGrowthChart() {
         renderAssetGrowthChart();
     });
 
+    const { investedLine } = getChartThemeColors();
     const traces = [
-        {
-            x: selectedDates,
-            y: selectedValue,
-            type: "scatter",
-            mode: "lines",
-            name: getAssetDisplayLabel(selected, { prefer: "symbol" }),
-            line: { color: "#1f77b4", width: 1.5 },
-        },
+        ...buildColoredPortfolioTraces(selectedDates, selectedValue, selectedInvested, false),
         {
             x: selectedDates,
             y: selectedInvested,
             type: "scatter",
             mode: "lines",
             name: "Invested",
-            line: { color: "skyblue", width: 1.5 },
+            showlegend: false,
+            line: { color: investedLine, width: 1.5, dash: "dot" },
+            hovertemplate: "%{x|%d %b %Y}<br>%{y:,.2f}<extra></extra>",
         },
     ];
 
-    const layout = {
-        xaxis: {
-            ...getChartAxisStyle("x"),
-            range: xRange,
-            tickformat: "%b '%y",
-            rangeslider: { visible: false },
-            fixedrange: disableChartInteractions,
-        },
-        yaxis: {
-            ...getChartAxisStyle("y"),
-            showticklabels: !hideSensitiveValues,
-            fixedrange: disableChartInteractions,
-        },
-        showlegend: showLegend,
-        legend: showLegend ? {
-            orientation: "v",
-            x: 0,
-            y: 1,
-            xanchor: "left",
-            yanchor: "top",
-        } : undefined,
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
-        font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
-    };
+    const layout = getBaseChartLayout(
+        { range: xRange, tickformat: "%b '%y", rangeslider: { visible: false }, fixedrange: disableChartInteractions },
+        { fixedrange: disableChartInteractions },
+    );
 
     Plotly.react("chart-asset-growth", traces, layout, getPlotlyConfig()).then(() => {
         if (chartEl._assetGrowthRelayoutHandler) {
@@ -1169,38 +1219,20 @@ function renderDividendsMonthlyChart() {
         xperiod: "M1",
         xperiodalignment: "middle",
         marker: {
-            color: "rgba(36, 153, 23, 0.7)",
+            color: "rgba(0, 150, 255, 0.7)",
             line: {
-                color: "rgba(37, 125, 18, 0.85)",
+                color: "rgba(0, 120, 220, 0.85)",
                 width: 1,
             },
         },
         hovertemplate: "%{x|%b %Y}<br>Dividends: %{y:.2f}<extra></extra>",
     };
 
-    const layout = {
-        xaxis: {
-            ...getChartAxisStyle("x"),
-            range: xRange,
-            rangeslider: { visible: false },
-            tickformat: "%b '%y",
-            ticklabelmode: "period",
-            automargin: true,
-            fixedrange: disableChartInteractions,
-        },
-        yaxis: {
-            ...getChartAxisStyle("y"),
-            showticklabels: !hideSensitiveValues,
-            fixedrange: true,
-        },
-        bargap: 0.32,
-        barcornerradius: 8,
-        showlegend: false,
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        margin: { t: 10, l: hideSensitiveValues ? 12 : 38, r: 10, b: 24 },
-        font: { family: "system-ui, -apple-system, Segoe UI, Roboto, Arial", size: 12 },
-    };
+    const layout = getBaseChartLayout(
+        { range: xRange, rangeslider: { visible: false }, tickformat: "%b '%y", ticklabelmode: "period", automargin: true, fixedrange: disableChartInteractions },
+        { fixedrange: true },
+        { bargap: 0.32, barcornerradius: 8 },
+    );
 
     Plotly.react("chart-dividends-monthly", [trace], layout, getPlotlyConfig()).then(() => {
         Plotly.Plots.resize("chart-dividends-monthly");

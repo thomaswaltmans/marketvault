@@ -13,14 +13,13 @@ function buildAssetTypeOptions(selectedType = "STOCK") {
 }
 
 function view_assets() {
-    hide_all_views();
-    setActiveNav("#nav-assets");
-    show("#view-assets");
-    const createPanel = getElement("#asset-create-panel");
-    const toggleButton = getElement("#btn-toggle-asset-create");
-    if (createPanel) createPanel.style.display = "none";
-    if (toggleButton) toggleButton.textContent = "Create asset";
-    loadAssets();
+    navigate("#view-assets", "#nav-assets", () => {
+        const createPanel = getElement("#asset-create-panel");
+        const toggleButton = getElement("#btn-toggle-asset-create");
+        if (createPanel) createPanel.style.display = "none";
+        if (toggleButton) toggleButton.textContent = "Create asset";
+        loadAssets();
+    });
 }
 
 function toggleAssetCreatePanel() {

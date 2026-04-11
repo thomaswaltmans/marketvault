@@ -1,7 +1,5 @@
 function view_import() {
-    hide_all_views();
-    setActiveNav("#nav-transactions");
-    show("#view-import");
+    navigate("#view-import", "#nav-transactions");
 }
 
 async function uploadXlsx(file) {

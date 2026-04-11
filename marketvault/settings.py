@@ -175,6 +175,25 @@ X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 
+# Cache
+# Production (DATABASE_URL set): file-based so it survives across gunicorn workers.
+# Development: in-memory is fine.
+if os.getenv("DATABASE_URL"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": "/tmp/marketvault_cache",
+            "TIMEOUT": 300,
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "TIMEOUT": 300,
+        }
+    }
+
 # Feature flag for self-service signup.
 # Keep False while running a private single-user deployment.
 REGISTRATION_ENABLED = False

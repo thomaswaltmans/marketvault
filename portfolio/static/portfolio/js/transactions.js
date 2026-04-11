@@ -12,16 +12,13 @@ function getAssetTypePillClass(assetType) {
 }
 
 function view_transactions() {
-    hide_all_views();
-    setActiveNav("#nav-transactions");
-    show("#view-transactions");
-    loadTransactionAssetFilter().then(() => loadTransactions());
+    navigate("#view-transactions", "#nav-transactions", () => {
+        loadTransactionAssetFilter().then(() => loadTransactions());
+    });
 }
 
 async function view_transaction_form(mode, txn = null) {
-    hide_all_views();
-    setActiveNav("#nav-transactions");
-    show("#view-transaction-form");
+    navigate("#view-transaction-form", "#nav-transactions");
 
     const title = getElement("#transaction-form-title");
     const status = getElement("#transaction-form-status");

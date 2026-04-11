@@ -95,6 +95,7 @@ document.addEventListener("DOMContentLoaded", function () {
     getElement("#txn-type")?.addEventListener("change", updateTxnFieldVisibility);
     getElement("#btn-save-profile")?.addEventListener("click", saveProfile);
     getElement("#btn-change-password")?.addEventListener("click", changePassword);
+    getElement("#btn-dark-mode")?.addEventListener("click", toggleDarkMode);
 
     const fileInput = getElement("#xlsx");
     const fileName = getElement("#file-name");

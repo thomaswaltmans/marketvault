@@ -1,8 +1,23 @@
 function view_profile() {
-    hide_all_views();
-    setActiveNav("#nav-profile");
-    show("#view-profile");
-    loadProfile();
+    navigate("#view-profile", "#nav-profile", () => {
+        loadProfile();
+        syncDarkToggle();
+    });
+}
+
+function syncDarkToggle() {
+    const btn = getElement("#btn-dark-mode");
+    if (!btn) return;
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    btn.setAttribute("aria-pressed", isDark ? "true" : "false");
+}
+
+function toggleDarkMode() {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+    syncDarkToggle();
 }
 
 async function loadProfile() {
