@@ -24,8 +24,13 @@ function renderDetailsTable(data) {
         return;
     }
 
-    const fmtEur = (v) => v != null ? `€\u00a0${v.toFixed(2)}` : '—';
-    const fmtPct = (v) => v != null ? `${v.toFixed(2)}%` : '—';
+    const fmtNum = (v, dec = 2) => {
+        if (v == null) return '—';
+        const [int, frac] = v.toFixed(dec).split('.');
+        return int.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ',' + frac;
+    };
+    const fmtEur = (v) => v != null ? `€\u00a0${fmtNum(v)}` : '—';
+    const fmtPct = (v) => v != null ? `${fmtNum(v)}%` : '—';
     const fmtQty = (v) => {
         if (v == null) return '—';
         return Number.isInteger(v) ? String(v) : parseFloat(v.toFixed(6)).toString();
@@ -39,7 +44,7 @@ function renderDetailsTable(data) {
         + '<th>Name</th><th class="dt-hide-mobile">Ticker</th>'
         + '<th class="dt-hide-mobile">Market</th><th class="dt-r">#</th>'
         + '<th class="dt-r">Price</th><th class="dt-r">Value</th><th class="dt-r">% Portfolio</th>'
-        + '<th class="dt-r">Day P/L</th><th class="dt-r">Day P/L (%)</th><th class="dt-r">YTD (%)</th>'
+        + '<th class="dt-r">Month P/L</th><th class="dt-r">Month (%)</th><th class="dt-r">YTD (%)</th>'
         + '<th class="dt-r">Bought</th><th class="dt-r">Sold</th><th class="dt-r">Dividends</th>'
         + '<th class="dt-r">Total P/L</th><th class="dt-r">Total P/L (%)</th>'
         + '</tr></thead><tbody>';
@@ -50,15 +55,15 @@ function renderDetailsTable(data) {
 
         for (const r of group.rows) {
             html += `<tr class="dt-row">
-                <td class="dt-name">${r.name || '—'}</td>
+                <td class="dt-name"><span class="dt-fullname">${r.name || '—'}</span><span class="dt-shortname">${r.short_name || r.name || '—'}</span></td>
                 <td class="dt-hide-mobile">${r.ticker || '—'}</td>
                 <td class="dt-muted dt-hide-mobile">${r.exchange || '—'}</td>
                 <td class="dt-r">${fmtQty(r.quantity)}</td>
                 <td class="dt-r">${fmtEur(r.current_price)}</td>
                 <td class="dt-r">${fmtEur(r.market_value)}</td>
                 <td class="dt-r">${fmtPct(r.pct_portfolio)}</td>
-                <td class="dt-r ${colorCls(r.day_change)}">${fmtEur(r.day_change)}</td>
-                <td class="dt-r ${colorCls(r.day_change_pct)}">${fmtPct(r.day_change_pct)}</td>
+                <td class="dt-r ${colorCls(r.month_change)}">${fmtEur(r.month_change)}</td>
+                <td class="dt-r ${colorCls(r.month_change_pct)}">${fmtPct(r.month_change_pct)}</td>
                 <td class="dt-r ${colorCls(r.ytd_pct)}">${fmtPct(r.ytd_pct)}</td>
                 <td class="dt-r">${fmtEur(r.total_bought)}</td>
                 <td class="dt-r">${fmtEur(r.total_sold)}</td>

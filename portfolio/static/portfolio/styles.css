@@ -1848,8 +1848,10 @@ body{
   background: rgba(255,255,255,0.03);
 }
 
+.details-table .dt-shortname{ display: none; }
+
 @media (max-width: 768px){
-  .details-table .dt-hide-mobile{
-    display: none;
-  }
+  .details-table .dt-hide-mobile{ display: none; }
+  .details-table .dt-fullname{ display: none; }
+  .details-table .dt-shortname{ display: inline; }
 }

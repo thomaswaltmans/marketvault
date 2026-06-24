@@ -610,27 +610,30 @@ def details_payload(user):
     market_values = quantities * latest_prices.fillna(0)
     total_portfolio = float(market_values.sum())
 
-    prev_prices = prices_aligned.iloc[-2] if len(prices_aligned) >= 2 else latest_prices
     ytd_start_prices = prices_aligned.apply(lambda col: col.dropna().iloc[0] if not col.dropna().empty else None)
+
+    month_ago = pd.to_datetime(today - timezone.timedelta(days=30))
+    prices_up_to_month = prices_aligned[prices_aligned.index <= month_ago]
+    month_prices = prices_up_to_month.iloc[-1] if not prices_up_to_month.empty else latest_prices
 
     type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
     rows = []
     for symbol in open_symbols:
         qty = float(quantities.get(symbol, 0))
         cur_raw = latest_prices.get(symbol)
-        prev_raw = prev_prices.get(symbol)
-        ytd_raw = ytd_start_prices.get(symbol)
         cur_price = float(cur_raw) if cur_raw is not None and pd.notna(cur_raw) else None
-        prev_price = float(prev_raw) if prev_raw is not None and pd.notna(prev_raw) else None
+        ytd_raw = ytd_start_prices.get(symbol)
         ytd_price = float(ytd_raw) if ytd_raw is not None and pd.notna(ytd_raw) else None
+        month_raw = month_prices.get(symbol)
+        month_price = float(month_raw) if month_raw is not None and pd.notna(month_raw) else None
 
         market_val = float(market_values.get(symbol, 0))
         bought = float(total_bought.get(symbol, 0))
         sold = float(total_sold.get(symbol, 0))
         dividends = float(total_dividends.get(symbol, 0))
 
-        day_change = (cur_price - prev_price) * qty if cur_price is not None and prev_price is not None else None
-        day_change_pct = ((cur_price - prev_price) / prev_price * 100) if cur_price is not None and prev_price is not None and prev_price > 0 else None
+        month_change = (cur_price - month_price) * qty if cur_price is not None and month_price is not None else None
+        month_change_pct = ((cur_price - month_price) / month_price * 100) if cur_price is not None and month_price is not None and month_price > 0 else None
         ytd_pct = ((cur_price - ytd_price) / ytd_price * 100) if cur_price is not None and ytd_price is not None and ytd_price > 0 else None
         total_pl = market_val + sold + dividends - bought
         total_pl_pct = (total_pl / bought * 100) if bought > 0 else None
@@ -648,8 +651,8 @@ def details_payload(user):
             "current_price": cur_price,
             "market_value": market_val,
             "pct_portfolio": pct_portfolio,
-            "day_change": day_change,
-            "day_change_pct": day_change_pct,
+            "month_change": month_change,
+            "month_change_pct": month_change_pct,
             "ytd_pct": ytd_pct,
             "total_bought": bought,
             "total_sold": sold,
