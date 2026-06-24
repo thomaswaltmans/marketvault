@@ -548,6 +548,125 @@ def _period_start_for_label(label, earliest_timestamp):
     return candidate if candidate > earliest else earliest
 
 
+def details_payload(user):
+    from itertools import groupby as _groupby
+
+    df = _transactions_dataframe(user)
+    if df.empty:
+        return {"groups": [], "total_portfolio": 0.0}
+
+    holdings = _holdings_timeseries(df)
+    if holdings.empty:
+        return {"groups": [], "total_portfolio": 0.0}
+
+    latest_holdings = holdings.iloc[-1]
+    open_symbols = latest_holdings[latest_holdings > 0].index.tolist()
+    if not open_symbols:
+        return {"groups": [], "total_portfolio": 0.0}
+
+    today = timezone.now().date()
+    ytd_start = f"{today.year}-01-01"
+    end_date = (today + timezone.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    prices = get_close_prices_cached(
+        data_symbols=open_symbols,
+        start_date=ytd_start,
+        end_date=end_date,
+        user=user,
+    )
+    if prices.empty:
+        return {"groups": [], "total_portfolio": 0.0}
+
+    prices.index = pd.to_datetime(prices.index.date)
+    prices = prices.ffill()
+    open_symbols = [s for s in open_symbols if s in prices.columns]
+    if not open_symbols:
+        return {"groups": [], "total_portfolio": 0.0}
+
+    assets_qs = Asset.objects.filter(user=user, data_symbol__in=open_symbols)
+    asset_info = {}
+    for a in assets_qs:
+        asset_info[a.data_symbol] = {
+            "ticker": a.ticker or a.data_symbol,
+            "name": (a.name.strip() if a.name else "") or a.ticker or a.data_symbol,
+            "short_name": (a.short_name.strip() if a.short_name else "") or (a.name.strip() if a.name else "") or a.ticker or a.data_symbol,
+            "exchange": a.exchange or "",
+            "asset_type": a.asset_type,
+        }
+
+    buy_df = df[df["txn_type"] == "BUY"].copy()
+    sell_df = df[df["txn_type"] == "SELL"].copy()
+    div_df = df[df["txn_type"] == "DIV"].copy()
+    buy_df["cost"] = buy_df["quantity"] * buy_df["unit_price"]
+    sell_df["proceeds"] = sell_df["quantity"] * sell_df["unit_price"]
+
+    total_bought = buy_df.groupby("data_symbol")["cost"].sum().reindex(open_symbols).fillna(0)
+    total_sold = sell_df.groupby("data_symbol")["proceeds"].sum().reindex(open_symbols).fillna(0)
+    total_dividends = div_df.groupby("data_symbol")["div_amount"].sum().reindex(open_symbols).fillna(0)
+
+    prices_aligned = prices.reindex(columns=open_symbols)
+    latest_prices = prices_aligned.iloc[-1]
+    quantities = latest_holdings.reindex(open_symbols).fillna(0)
+    market_values = quantities * latest_prices.fillna(0)
+    total_portfolio = float(market_values.sum())
+
+    prev_prices = prices_aligned.iloc[-2] if len(prices_aligned) >= 2 else latest_prices
+    ytd_start_prices = prices_aligned.apply(lambda col: col.dropna().iloc[0] if not col.dropna().empty else None)
+
+    type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
+    rows = []
+    for symbol in open_symbols:
+        qty = float(quantities.get(symbol, 0))
+        cur_raw = latest_prices.get(symbol)
+        prev_raw = prev_prices.get(symbol)
+        ytd_raw = ytd_start_prices.get(symbol)
+        cur_price = float(cur_raw) if cur_raw is not None and pd.notna(cur_raw) else None
+        prev_price = float(prev_raw) if prev_raw is not None and pd.notna(prev_raw) else None
+        ytd_price = float(ytd_raw) if ytd_raw is not None and pd.notna(ytd_raw) else None
+
+        market_val = float(market_values.get(symbol, 0))
+        bought = float(total_bought.get(symbol, 0))
+        sold = float(total_sold.get(symbol, 0))
+        dividends = float(total_dividends.get(symbol, 0))
+
+        day_change = (cur_price - prev_price) * qty if cur_price is not None and prev_price is not None else None
+        day_change_pct = ((cur_price - prev_price) / prev_price * 100) if cur_price is not None and prev_price is not None and prev_price > 0 else None
+        ytd_pct = ((cur_price - ytd_price) / ytd_price * 100) if cur_price is not None and ytd_price is not None and ytd_price > 0 else None
+        total_pl = market_val + sold + dividends - bought
+        total_pl_pct = (total_pl / bought * 100) if bought > 0 else None
+        pct_portfolio = (market_val / total_portfolio * 100) if total_portfolio > 0 else None
+
+        meta = asset_info.get(symbol, {})
+        rows.append({
+            "symbol": symbol,
+            "ticker": meta.get("ticker", symbol),
+            "name": meta.get("name", symbol),
+            "short_name": meta.get("short_name", symbol),
+            "exchange": meta.get("exchange", ""),
+            "asset_type": meta.get("asset_type", "STOCK"),
+            "quantity": qty,
+            "current_price": cur_price,
+            "market_value": market_val,
+            "pct_portfolio": pct_portfolio,
+            "day_change": day_change,
+            "day_change_pct": day_change_pct,
+            "ytd_pct": ytd_pct,
+            "total_bought": bought,
+            "total_sold": sold,
+            "total_dividends": dividends,
+            "total_pl": total_pl,
+            "total_pl_pct": total_pl_pct,
+        })
+
+    rows.sort(key=lambda r: (type_priority.get(r["asset_type"], 99), -r["market_value"]))
+
+    groups = []
+    for asset_type, items in _groupby(rows, key=lambda r: r["asset_type"]):
+        groups.append({"asset_type": asset_type, "rows": list(items)})
+
+    return {"groups": groups, "total_portfolio": total_portfolio}
+
+
 def winners_losers_payload(user, period="M", limit=6):
     """
     Returns best and worst currently-held assets over a selected period.
