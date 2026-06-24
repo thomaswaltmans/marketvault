@@ -23,6 +23,7 @@
                     </button>
                     <div id="mobile-nav-menu" class="mobile-nav-menu" hidden>
                         <button class="nav-link mobile-nav-option" type="button" data-view="dashboard">Dashboard</button>
+                        <button class="nav-link mobile-nav-option" type="button" data-view="details">Details</button>
                         <button class="nav-link mobile-nav-option" type="button" data-view="assets">Assets</button>
                         <button class="nav-link mobile-nav-option" type="button" data-view="transactions">Transactions</button>
                         <button class="nav-link mobile-nav-option" type="button" data-view="profile">
@@ -40,6 +41,9 @@
                 {% if user.is_authenticated %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'index' %}" id="nav-dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="nav-details">Details</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" id="nav-assets">Assets</a>

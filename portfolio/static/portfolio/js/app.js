@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", function () {
             closeMobileNavMenu();
 
             if (view === "dashboard") view_dashboard();
+            if (view === "details") view_details();
             if (view === "assets") view_assets();
             if (view === "transactions") view_transactions();
             if (view === "profile") view_profile();
@@ -47,6 +48,12 @@ document.addEventListener("DOMContentLoaded", function () {
         e.preventDefault();
         closeMobileNavMenu();
         view_dashboard();
+    });
+
+    getElement("#nav-details").addEventListener("click", (e) => {
+        e.preventDefault();
+        closeMobileNavMenu();
+        view_details();
     });
 
     getElement("#nav-assets").addEventListener("click", (e) => {

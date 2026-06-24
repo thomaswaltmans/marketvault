@@ -26,6 +26,7 @@ urlpatterns = [
     path("analytics/asset-growth", views.analytics_asset_growth, name="analytics-asset-growth"),
     path("analytics/dividends-monthly", views.analytics_dividends_monthly, name="analytics-dividends-monthly"),
     path("analytics/winners-losers", views.analytics_winners_losers, name="analytics-winners-losers"),
+    path("analytics/details", views.analytics_details, name="analytics-details"),
 ]
 
 if settings.REGISTRATION_ENABLED:

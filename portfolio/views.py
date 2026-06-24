@@ -30,7 +30,7 @@ def _analytics_cache_key(user_id, endpoint):
     return f"analytics:{user_id}:{endpoint}"
 
 def invalidate_analytics_cache(user):
-    for endpoint in ("growth", "allocation", "asset_growth", "dividends_monthly", "winners_losers"):
+    for endpoint in ("growth", "allocation", "asset_growth", "dividends_monthly", "winners_losers", "details"):
         cache.delete(_analytics_cache_key(user.id, endpoint))
 
 try:
@@ -791,5 +791,23 @@ def analytics_winners_losers(request):
     payload = cache.get(key)
     if payload is None:
         payload = winners_losers_payload(request.user, period=period)
+        cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
+    return JsonResponse(payload)
+
+
+@login_required
+def analytics_details(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+
+    try:
+        from portfolio.services.analytics import details_payload
+    except ModuleNotFoundError:
+        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+
+    key = _analytics_cache_key(request.user.id, "details")
+    payload = cache.get(key)
+    if payload is None:
+        payload = details_payload(request.user)
         cache.set(key, payload, ANALYTICS_CACHE_TIMEOUT)
     return JsonResponse(payload)
