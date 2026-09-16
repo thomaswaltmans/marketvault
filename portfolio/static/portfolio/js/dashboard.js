@@ -201,17 +201,15 @@ function view_dashboard() {
         initializeSensitiveToggle();
 
         requestAnimationFrame(() => {
-            loadGrowthChartWithRetry();
-            loadAllocationChartWithRetry();
-            loadAssetGrowthChartWithRetry();
-            loadDividendsMonthlyChartWithRetry();
-            loadWinnersLosersCard();
+            refreshDashboardCharts();
         });
     });
 }
 
-function refreshDashboardCharts() {
-    loadGrowthChartWithRetry();
+async function refreshDashboardCharts() {
+    // Growth runs alone first: it populates the shared price cache, so the other
+    // four charts read warm data instead of each downloading the same symbols.
+    await loadGrowthChartWithRetry();
     loadAllocationChartWithRetry();
     loadAssetGrowthChartWithRetry();
     loadDividendsMonthlyChartWithRetry();

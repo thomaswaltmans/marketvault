@@ -22,6 +22,8 @@ class Asset(models.Model):
     currency = models.CharField(max_length=10, default="EUR")
     exchange = models.CharField(max_length=40, blank=True)
     data_symbol = models.CharField(max_length=30)
+    prices_covered_from = models.DateField(null=True, blank=True)
+    prices_fetched_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

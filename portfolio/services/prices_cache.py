@@ -10,6 +10,9 @@ from portfolio.services.prices_yahoo import download_close_prices
 
 logger = logging.getLogger(__name__)
 
+# How long a successful fetch attempt keeps an asset off the download path.
+PRICE_FRESHNESS = timedelta(hours=1)
+
 
 def _download_with_retries(symbols, start_date, end_date, retries=3):
     last = pd.DataFrame()
@@ -126,71 +129,86 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
     for p in cached_points:
         cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
 
-    reference_cached_points = (
-        PricePoint.objects
-        .filter(asset__in=reference_assets, date__gte=start, date__lt=end)
-        .select_related("asset")
-    )
-    reference_cached_map = {}
-    for p in reference_cached_points:
-        reference_cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
-
-    cached_series_by_symbol = {
-        asset.data_symbol: _series_from_cached_dates(reference_cached_map.get(asset.id, {}))
-        for asset in reference_assets
-    }
-
     # ---- 2) Determine if we need to fetch anything
-    # Never require "all calendar dates" because markets are closed on many days.
-    # Instead, fetch only when symbol has no cache or its latest cached close is stale.
+    # Freshness is tracked per asset by when we last attempted a download, not by
+    # how recent the newest close is: markets are shut on weekends and holidays, so
+    # a calendar-based test can never pass on those days and re-downloads forever.
     fetch_jobs = []
-    refresh_if_older_than = end - timedelta(days=2)
+    now = timezone.now()
     for a in assets:
-        have_dates = sorted(cached_map.get(a.id, {}).keys())
+        cached_dates = cached_map.get(a.id, {})
+        full_window = (a.data_symbol, start_date, end_date)
+
         if a.data_symbol in force_refresh_symbols:
-            fetch_jobs.append((a.data_symbol, start_date, end_date))
+            fetch_jobs.append(full_window)
             continue
 
-        if not have_dates:
-            fetch_jobs.append((a.data_symbol, start_date, end_date))
+        # An attempt counts only if it reached at least as far back as this window,
+        # otherwise a 30-day caller would mask the gap for a 5-year one.
+        attempted_recently = (
+            a.prices_fetched_at is not None
+            and a.prices_fetched_at >= now - PRICE_FRESHNESS
+            and a.prices_covered_from is not None
+            and a.prices_covered_from <= start
+        )
+        if attempted_recently:
             continue
 
-        latest = have_dates[-1]
-        if _has_suspicious_jump(cached_map.get(a.id, {})):
-            fetch_jobs.append((a.data_symbol, start_date, end_date))
+        if not cached_dates or _has_suspicious_jump(cached_dates):
+            fetch_jobs.append(full_window)
             continue
 
-        if latest < refresh_if_older_than:
-            # Refresh the full requested window so cached rows remain on one
-            # consistent price basis instead of mixing old and new downloads.
-            fetch_jobs.append((a.data_symbol, start_date, end_date))
+        if a.prices_covered_from is None or a.prices_covered_from > start:
+            fetch_jobs.append(full_window)
+            continue
+
+        # Cache already reaches back far enough, so top up the tail only. Starting
+        # on the newest cached date also corrects it if it was a partial close.
+        fetch_jobs.append((a.data_symbol, max(cached_dates), end_date))
 
     # ---- 3) Fetch missing/stale symbols and save
     if fetch_jobs:
+        # Only the collision guard below needs every asset's history, so this stays
+        # out of the warm path where nothing is downloaded.
+        reference_cached_map = {}
+        for p in PricePoint.objects.filter(asset__in=reference_assets, date__gte=start, date__lt=end):
+            reference_cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
+
+        cached_series_by_symbol = {
+            asset.data_symbol: _series_from_cached_dates(reference_cached_map.get(asset.id, {}))
+            for asset in reference_assets
+        }
+
         downloaded_series = {}
         download_metadata = {}
         rows_to_create = []
         delete_ranges = []
+        # Symbols sharing a window go out in one request rather than one each.
+        jobs_by_window = {}
         for symbol, job_start, job_end in fetch_jobs:
-            downloaded = _download_with_retries([symbol], job_start, job_end, retries=3)
+            jobs_by_window.setdefault((str(job_start), str(job_end)), []).append(symbol)
+
+        for (job_start, job_end), window_symbols in jobs_by_window.items():
+            downloaded = _download_with_retries(window_symbols, job_start, job_end, retries=3)
             if downloaded is None or downloaded.empty:
                 continue
 
             downloaded.index = pd.to_datetime(downloaded.index.date)
-            if symbol not in downloaded.columns:
-                continue
+            for symbol in window_symbols:
+                if symbol not in downloaded.columns:
+                    continue
 
-            series = downloaded[symbol].dropna()
-            asset = symbol_to_asset.get(symbol)
-            if not asset:
-                continue
+                series = downloaded[symbol].dropna()
+                asset = symbol_to_asset.get(symbol)
+                if not asset:
+                    continue
 
-            downloaded_series[symbol] = series.astype(float)
-            download_metadata[symbol] = (
-                asset,
-                pd.to_datetime(job_start).date(),
-                pd.to_datetime(job_end).date(),
-            )
+                downloaded_series[symbol] = series.astype(float)
+                download_metadata[symbol] = (
+                    asset,
+                    pd.to_datetime(job_start).date(),
+                    pd.to_datetime(job_end).date(),
+                )
 
         invalid_symbols = set()
 
@@ -252,6 +270,31 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
                     unique_fields=["asset", "date"],
                 )
 
+        # Record the attempt even when it produced nothing, so delisted or rejected
+        # symbols cost one request per freshness window instead of one per page load.
+        attempted = {}
+        for symbol, job_start, _ in fetch_jobs:
+            asset = symbol_to_asset.get(symbol)
+            if not asset:
+                continue
+
+            job_start_date = pd.to_datetime(str(job_start)).date()
+            previous = attempted.get(asset.id)
+            if previous is None or job_start_date < previous[1]:
+                attempted[asset.id] = (asset, job_start_date)
+
+        if attempted:
+            for asset, job_start_date in attempted.values():
+                if asset.prices_covered_from is not None:
+                    job_start_date = min(asset.prices_covered_from, job_start_date)
+                asset.prices_covered_from = job_start_date
+                asset.prices_fetched_at = now
+
+            Asset.objects.bulk_update(
+                [asset for asset, _ in attempted.values()],
+                ["prices_covered_from", "prices_fetched_at"],
+            )
+
     # ---- 4) Re-load everything from DB and build the final DF
     final_points = (
         PricePoint.objects
@@ -285,6 +328,9 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
 
 def purge_asset_price_history(asset):
     deleted_count, _ = PricePoint.objects.filter(asset=asset).delete()
+    asset.prices_covered_from = None
+    asset.prices_fetched_at = None
+    asset.save(update_fields=["prices_covered_from", "prices_fetched_at"])
     return deleted_count
 
 

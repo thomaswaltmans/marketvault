@@ -151,23 +151,28 @@ def _extract_close_series(prices, requested_symbol, downloaded_symbol):
     return series
 
 
-def _download_single_symbol(symbol, start_date, end_date):
-    for candidate in _symbol_candidates(symbol):
-        prices = yf.download(
-            tickers=candidate,
-            start=start_date,
-            end=end_date,
-            auto_adjust=False,
-            repair=True,
-            progress=False,
-            group_by="column",
-        )
-        series = _extract_close_series(prices, requested_symbol=symbol, downloaded_symbol=candidate).dropna()
-        if series.empty:
-            continue
-        return series
+def _download_batch(symbols, start_date, end_date):
+    if not symbols:
+        return {}
 
-    return pd.Series(name=symbol, dtype=float)
+    prices = yf.download(
+        tickers=list(symbols),
+        start=start_date,
+        end=end_date,
+        auto_adjust=False,
+        repair=True,
+        progress=False,
+        group_by="column",
+        threads=True,
+    )
+
+    downloaded = {}
+    for symbol in symbols:
+        series = _extract_close_series(prices, requested_symbol=symbol, downloaded_symbol=symbol).dropna()
+        if not series.empty:
+            downloaded[symbol] = series
+    return downloaded
+
 
 def download_close_prices(data_symbols, start_date, end_date):
     """
@@ -179,13 +184,36 @@ def download_close_prices(data_symbols, start_date, end_date):
     if not data_symbols:
         return pd.DataFrame()
 
-    frames = []
+    symbols = []
     for symbol in data_symbols:
-        series = _download_single_symbol(symbol, start_date, end_date)
-        if series.empty:
-            continue
-        frames.append(series.to_frame())
+        normalized = str(symbol).strip()
+        if normalized and normalized not in symbols:
+            symbols.append(normalized)
 
+    series_by_symbol = _download_batch(symbols, start_date, end_date)
+
+    # Only symbols that came back empty are worth a second round trip, and their
+    # fallback tickers go out together so this stays at two requests at worst.
+    missing = [symbol for symbol in symbols if symbol not in series_by_symbol]
+    fallback_candidates = []
+    for symbol in missing:
+        for candidate in _symbol_candidates(symbol)[1:]:
+            if candidate not in fallback_candidates:
+                fallback_candidates.append(candidate)
+
+    if fallback_candidates:
+        fallback_series = _download_batch(fallback_candidates, start_date, end_date)
+        for symbol in missing:
+            for candidate in _symbol_candidates(symbol)[1:]:
+                series = fallback_series.get(candidate)
+                if series is None or series.empty:
+                    continue
+                series = series.copy()
+                series.name = symbol
+                series_by_symbol[symbol] = series
+                break
+
+    frames = [series_by_symbol[symbol].to_frame() for symbol in symbols if symbol in series_by_symbol]
     if not frames:
         return pd.DataFrame()
 
