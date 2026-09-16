@@ -47,22 +47,33 @@ Overall, the complexity is in the combination of full-stack architecture + finan
 - `portfolio/static/portfolio/js/transactions.js`: Transactions view behavior and form handlers.
 - `portfolio/static/portfolio/js/imports.js`: Import page behavior and upload workflow.
 - `portfolio/static/portfolio/js/profile.js`: Profile details and password update behavior.
-- `portfolio/migrations/0001_initial.py` to `0006_asset_user_scope_finalize.py`: Database schema and data migrations.
-- `portfolio/tests.py`: Placeholder for Django tests.
+- `portfolio/static/portfolio/js/details.js`: Holdings detail table rendering.
+- `portfolio/migrations/0001_initial.py` to `0009_asset_prices_covered_from_asset_prices_fetched_at.py`: Database schema and data migrations.
+- `portfolio/tests.py`: Tests for the price cache — collision guard and fetch scheduling.
+- `pyproject.toml`: Dependencies plus black and ruff configuration.
+- `uv.lock`: Pinned dependency versions.
+- `Makefile`: `format` and `lint` targets.
+- `Procfile`: Production start command.
+- `railway.json`: Railway build and pre-deploy configuration.
+- `CLAUDE.md`: Architecture notes and project invariants.
 
 ## How to Run
 
 1. Clone the project and move into the project directory.
-2. Create and activate a virtual environment.
-3. Install dependencies:
-   - `pip install -r requirements.txt`
-4. Apply migrations:
-   - `python manage.py migrate`
-5. (Optional) Create admin user:
-   - `python manage.py createsuperuser`
-6. Start development server:
-   - `python manage.py runserver`
-7. Open the local URL shown by Django (typically `http://127.0.0.1:8000/`).
+2. Install [uv](https://docs.astral.sh/uv/) if you do not have it. Dependencies are declared in
+   `pyproject.toml` and pinned in `uv.lock`; `uv run` creates and syncs the virtual environment
+   automatically, so there is no separate install or activate step.
+3. Apply migrations:
+   - `uv run python manage.py migrate`
+4. (Optional) Create admin user:
+   - `uv run python manage.py createsuperuser`
+5. Start development server:
+   - `uv run python manage.py runserver`
+6. Open the local URL shown by Django (typically `http://127.0.0.1:8000/`).
+
+Formatting and linting:
+   - `make format` (black)
+   - `make lint` (ruff)
 
 Typical usage flow:
 - Register a user and log in.
@@ -81,11 +92,16 @@ Typical usage flow:
 
 ## Packages
 
-Python dependencies are listed in `requirements.txt`:
+Python dependencies are declared in `pyproject.toml` and pinned in `uv.lock`:
 
-- `Django`
-- `pandas`
-- `yfinance`
-- `openpyxl`
+- `Django` — web framework
+- `pandas` — analytics time-series processing
+- `yfinance[repair]` — market data retrieval; the `repair` extra pulls scipy and scikit-learn, which
+  yfinance needs for the price repair this project relies on
+- `openpyxl` — Excel import/export
+- `dj-database-url`, `psycopg[binary]` — PostgreSQL configuration in production
+- `gunicorn`, `whitenoise` — production server and static file serving
+- `django-ratelimit` — rate limiting on auth endpoints
 
-These are required for the web app, analytics processing, market data retrieval, and Excel import support.
+Development-only tools (`black`, `ruff`) live in the `dev` dependency group and are excluded from
+production builds with `--no-dev`.

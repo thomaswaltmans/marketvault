@@ -64,14 +64,15 @@ All have sensible dev defaults; only `DATABASE_URL` and production secrets need 
 Single Django app (`portfolio/`) with all models, views, and services in one place.
 
 **Models** (`portfolio/models.py`):
-- `User` — extends `AbstractUser`. Extra fields: `email_verified` (bool, default False) and `email_verification_token` (UUID, nullable). Partial unique constraint on `email` (non-empty only). `AUTH_USER_MODEL = "portfolio.User"`.
+- `User` — extends `AbstractUser`. `AUTH_USER_MODEL = "portfolio.User"`. On `main` this is a bare subclass with no extra fields.
+  ⚠️ The `email_verified` / `email_verification_token` fields and the partial unique constraint on `email` live on the unmerged **`feature/registration`** branch. Everything below tagged *(feature/registration)* describes that branch, not `main` — do not write code on `main` that assumes it.
 - `Asset` — unique per user on `(user, ticker, exchange)` and `(user, data_symbol)`. Also carries `prices_covered_from` / `prices_fetched_at`, the price-cache freshness markers (see `prices_cache.py`).
 - `Transaction` — field-level validation: dividend txns use only `div_amount`; buy/sell use `quantity` + `unit_price` (mutually exclusive). `Transaction.save()` calls `full_clean()`, so validation always runs — never bypass with `update()` to skip it intentionally.
 - `PricePoint` — persistent price cache, one row per `(asset, date)`. Indexed on `(asset, date)` and `(date)`.
 
-**Views** (`portfolio/views.py`): All endpoints in one file. Rate limiting via django-ratelimit: login (20/min by IP, 8/min by username), register (10/min by IP), resend-verification (5/min by IP), password change (10/min). Analytics views are wrapped with Django's cache framework (5-min TTL, key: `analytics:{user_id}:{endpoint}`). `invalidate_analytics_cache(user)` is called on every transaction/asset write — **must be called after any data mutation that affects analytics**.
+**Views** (`portfolio/views.py`): All endpoints in one file. Rate limiting via django-ratelimit: login (20/min by IP, 8/min by username), register (10/min by IP), password change (10/min), and on feature/registration resend-verification (5/min by IP). Analytics views are wrapped with Django's cache framework (5-min TTL, key: `analytics:{user_id}:{endpoint}`). `invalidate_analytics_cache(user)` is called on every transaction/asset write — **must be called after any data mutation that affects analytics**.
 
-**Registration/email verification flow**: `register` creates the user with `email_verified=False`, sends a verification email, and redirects to `verify_pending.html` — it does **not** log the user in. `login_view` blocks login for unverified accounts. `verify_email` validates the UUID token, marks the user verified, and logs them in. `resend_verification` regenerates the token and resends the email without revealing whether the address exists.
+**Registration/email verification flow** *(feature/registration — NOT on `main`; on `main`, `register` logs the user straight in and there are no verification routes)*: `register` creates the user with `email_verified=False`, sends a verification email, and redirects to `verify_pending.html` — it does **not** log the user in. `login_view` blocks login for unverified accounts. `verify_email` validates the UUID token, marks the user verified, and logs them in. `resend_verification` regenerates the token and resends the email without revealing whether the address exists.
 
 **Services**:
 - `portfolio/services/analytics.py` — six public functions: `growth_payload`, `allocation_payload`, `asset_growth_payload`, `dividends_monthly_payload`, `winners_losers_payload`, `details_payload`. Each builds a pandas DataFrame from transactions, computes holdings/invested time series, fetches prices, and returns a plain dict for JSON serialisation.
@@ -112,8 +113,8 @@ Single-page app — one Django template (`portfolio/templates/portfolio/index.ht
 /                        → index (SPA shell, login required)
 /login, /logout          → auth
 /register                → only mounted when REGISTRATION_ENABLED=True
-/verify-email/<uuid>     → email verification token handler (always mounted)
-/resend-verification     → POST, resends verification email (always mounted)
+/verify-email/<uuid>     → (feature/registration) email verification token handler
+/resend-verification     → (feature/registration) POST, resends verification email
 /assets                  → GET list, POST create
 /assets/<id>             → PUT update, DELETE delete
 /assets/<id>/refresh-prices → POST
