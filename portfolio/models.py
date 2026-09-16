@@ -1,11 +1,13 @@
-from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
+
 
 # Create your models here.
 class User(AbstractUser):
     pass
+
 
 class Asset(models.Model):
     class AssetType(models.TextChoices):
@@ -18,7 +20,9 @@ class Asset(models.Model):
     ticker = models.CharField(max_length=20)
     name = models.CharField(max_length=120, blank=True)
     short_name = models.CharField(max_length=60, blank=True)
-    asset_type = models.CharField(max_length=10, choices=AssetType.choices, default=AssetType.STOCK)
+    asset_type = models.CharField(
+        max_length=10, choices=AssetType.choices, default=AssetType.STOCK
+    )
     currency = models.CharField(max_length=10, default="EUR")
     exchange = models.CharField(max_length=40, blank=True)
     data_symbol = models.CharField(max_length=30)
@@ -27,24 +31,41 @@ class Asset(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["user", "ticker", "exchange"], name="unique_user_ticker_exchange"),
-            models.UniqueConstraint(fields=["user", "data_symbol"], name="unique_user_data_symbol"),
+            models.UniqueConstraint(
+                fields=["user", "ticker", "exchange"],
+                name="unique_user_ticker_exchange",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "data_symbol"], name="unique_user_data_symbol"
+            ),
         ]
 
     def __str__(self):
         return f"{self.ticker} ({self.exchange})"
+
 
 class Transaction(models.Model):
     class TransactionType(models.TextChoices):
         BUY = "BUY", "Buy"
         SELL = "SELL", "Sell"
         DIVIDEND = "DIV", "Dividend"
-    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="transactions")
+
+    user = models.ForeignKey(
+        "User", on_delete=models.CASCADE, related_name="transactions"
+    )
     txn_type = models.CharField(max_length=4, choices=TransactionType.choices)
-    asset = models.ForeignKey("Asset", on_delete=models.PROTECT, related_name="transactions")
-    quantity = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)
-    unit_price = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)
-    div_amount = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)
+    asset = models.ForeignKey(
+        "Asset", on_delete=models.PROTECT, related_name="transactions"
+    )
+    quantity = models.DecimalField(
+        max_digits=20, decimal_places=8, null=True, blank=True
+    )
+    unit_price = models.DecimalField(
+        max_digits=20, decimal_places=8, null=True, blank=True
+    )
+    div_amount = models.DecimalField(
+        max_digits=20, decimal_places=8, null=True, blank=True
+    )
     timestamp = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -68,34 +89,51 @@ class Transaction(models.Model):
             "div_amount": str(self.div_amount) if self.div_amount is not None else None,
             "timestamp": self.timestamp.isoformat(),
         }
-    
+
     def clean(self):
         super().clean()
 
         is_div = self.txn_type == self.TransactionType.DIVIDEND
 
-        trade_fields_filled = (self.quantity is not None) or (self.unit_price is not None)
+        trade_fields_filled = (self.quantity is not None) or (
+            self.unit_price is not None
+        )
         div_field_filled = self.div_amount is not None
 
         if is_div:
             if not div_field_filled:
-                raise ValidationError({"div_amount": "Dividend transactions require a dividend amount."})
+                raise ValidationError(
+                    {"div_amount": "Dividend transactions require a dividend amount."}
+                )
             if trade_fields_filled:
-                raise ValidationError("Dividend transactions cannot include quantity or unit price.")
+                raise ValidationError(
+                    "Dividend transactions cannot include quantity or unit price."
+                )
         else:
             if self.quantity is None:
-                raise ValidationError({"quantity": "Buy/Sell transactions require quantity."})
+                raise ValidationError(
+                    {"quantity": "Buy/Sell transactions require quantity."}
+                )
             if self.unit_price is None:
-                raise ValidationError({"unit_price": "Buy/Sell transactions require unit price."})
+                raise ValidationError(
+                    {"unit_price": "Buy/Sell transactions require unit price."}
+                )
             if div_field_filled:
-                raise ValidationError({"div_amount": "Buy/Sell transactions cannot include a dividend amount."})
+                raise ValidationError(
+                    {
+                        "div_amount": "Buy/Sell transactions cannot include a dividend amount."
+                    }
+                )
 
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
 
+
 class PricePoint(models.Model):
-    asset = models.ForeignKey("Asset", on_delete=models.CASCADE, related_name="price_points")
+    asset = models.ForeignKey(
+        "Asset", on_delete=models.CASCADE, related_name="price_points"
+    )
     date = models.DateField()
     close = models.DecimalField(max_digits=20, decimal_places=8)
 

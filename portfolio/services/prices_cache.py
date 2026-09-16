@@ -1,7 +1,8 @@
-import pandas as pd
-from datetime import timedelta
 import logging
 import time
+from datetime import timedelta
+
+import pandas as pd
 from django.db import transaction as db_transaction
 from django.utils import timezone
 
@@ -19,7 +20,9 @@ def _download_with_retries(symbols, start_date, end_date, retries=3):
 
     for attempt in range(retries):
         try:
-            df = download_close_prices(symbols, start_date=start_date, end_date=end_date)
+            df = download_close_prices(
+                symbols, start_date=start_date, end_date=end_date
+            )
             if df is not None and not df.empty:
                 return df
             last = df
@@ -27,7 +30,7 @@ def _download_with_retries(symbols, start_date, end_date, retries=3):
             pass
 
         # backoff: 0.5s, 1s, 2s ...
-        time.sleep(0.5 * (2 ** attempt))
+        time.sleep(0.5 * (2**attempt))
 
     return last
 
@@ -80,7 +83,9 @@ def _series_matches_other_symbol(series, other_series, min_overlap=5, tolerance=
     return bool(((left[valid_mask] - right[valid_mask]).abs() <= tolerance).all())
 
 
-def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force_refresh_symbols=None):
+def get_close_prices_cached(
+    data_symbols, start_date, end_date, user=None, force_refresh_symbols=None
+):
     """
     Returns DataFrame with:
       index: daily dates (datetime64)
@@ -113,17 +118,15 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
     reference_assets = list(assets)
     if user is not None:
         reference_assets.extend(
-            Asset.objects
-            .filter(user=user)
-            .exclude(id__in=[asset.id for asset in assets])
+            Asset.objects.filter(user=user).exclude(
+                id__in=[asset.id for asset in assets]
+            )
         )
 
     # ---- 1) Load cached points
-    cached_points = (
-        PricePoint.objects
-        .filter(asset__in=assets, date__gte=start, date__lt=end)
-        .select_related("asset")
-    )
+    cached_points = PricePoint.objects.filter(
+        asset__in=assets, date__gte=start, date__lt=end
+    ).select_related("asset")
 
     cached_map = {}
     for p in cached_points:
@@ -171,11 +174,15 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
         # Only the collision guard below needs every asset's history, so this stays
         # out of the warm path where nothing is downloaded.
         reference_cached_map = {}
-        for p in PricePoint.objects.filter(asset__in=reference_assets, date__gte=start, date__lt=end):
+        for p in PricePoint.objects.filter(
+            asset__in=reference_assets, date__gte=start, date__lt=end
+        ):
             reference_cached_map.setdefault(p.asset_id, {})[p.date] = float(p.close)
 
         cached_series_by_symbol = {
-            asset.data_symbol: _series_from_cached_dates(reference_cached_map.get(asset.id, {}))
+            asset.data_symbol: _series_from_cached_dates(
+                reference_cached_map.get(asset.id, {})
+            )
             for asset in reference_assets
         }
 
@@ -189,7 +196,9 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
             jobs_by_window.setdefault((str(job_start), str(job_end)), []).append(symbol)
 
         for (job_start, job_end), window_symbols in jobs_by_window.items():
-            downloaded = _download_with_retries(window_symbols, job_start, job_end, retries=3)
+            downloaded = _download_with_retries(
+                window_symbols, job_start, job_end, retries=3
+            )
             if downloaded is None or downloaded.empty:
                 continue
 
@@ -229,10 +238,12 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
         for idx, symbol in enumerate(downloaded_symbols):
             if symbol in invalid_symbols:
                 continue
-            for other_symbol in downloaded_symbols[idx + 1:]:
+            for other_symbol in downloaded_symbols[idx + 1 :]:
                 if other_symbol in invalid_symbols:
                     continue
-                if _series_matches_other_symbol(downloaded_series[symbol], downloaded_series[other_symbol]):
+                if _series_matches_other_symbol(
+                    downloaded_series[symbol], downloaded_series[other_symbol]
+                ):
                     invalid_symbols.add(symbol)
                     invalid_symbols.add(other_symbol)
                     logger.warning(
@@ -296,11 +307,9 @@ def get_close_prices_cached(data_symbols, start_date, end_date, user=None, force
             )
 
     # ---- 4) Re-load everything from DB and build the final DF
-    final_points = (
-        PricePoint.objects
-        .filter(asset__in=assets, date__gte=start, date__lt=end)
-        .select_related("asset")
-    )
+    final_points = PricePoint.objects.filter(
+        asset__in=assets, date__gte=start, date__lt=end
+    ).select_related("asset")
 
     data = {}
     for p in final_points:
@@ -340,11 +349,15 @@ def refresh_asset_price_history(asset, user=None, lookback_years=10):
     The refresh window starts at the first known transaction for the asset, or a
     reasonable historical fallback when no transactions exist yet.
     """
-    first_txn = asset.transactions.order_by("timestamp").values_list("timestamp", flat=True).first()
+    first_txn = (
+        asset.transactions.order_by("timestamp")
+        .values_list("timestamp", flat=True)
+        .first()
+    )
     if first_txn is not None:
-        start_date = (first_txn.date() - timedelta(days=7))
+        start_date = first_txn.date() - timedelta(days=7)
     else:
-        start_date = (timezone.now().date() - timedelta(days=365 * lookback_years))
+        start_date = timezone.now().date() - timedelta(days=365 * lookback_years)
 
     end_date = timezone.now().date() + timedelta(days=1)
     purged_rows = purge_asset_price_history(asset)

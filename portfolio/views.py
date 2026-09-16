@@ -1,37 +1,47 @@
-from django.shortcuts import render
-from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
-from django.conf import settings
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.db import IntegrityError
-from django.db import transaction as db_transaction
-from django.db.models import Q
-from django.urls import reverse
-from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.contrib.auth.decorators import login_required
-from django.utils.dateparse import parse_datetime
-from django.core.exceptions import ValidationError
-from django.core.cache import cache
-
 import json
 import logging
 import re
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from io import BytesIO
-from datetime import datetime, timezone as dt_timezone
 
-from .models import User, Asset, Transaction
+from django.conf import settings
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
+from django.db.models import Q
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+from .models import Asset, Transaction, User
 from .services.prices_cache import refresh_asset_price_history
 
 logger = logging.getLogger(__name__)
 
 ANALYTICS_CACHE_TIMEOUT = 300  # 5 minutes
 
+
 def _analytics_cache_key(user_id, endpoint):
     return f"analytics:{user_id}:{endpoint}"
 
+
 def invalidate_analytics_cache(user):
-    for endpoint in ("growth", "allocation", "asset_growth", "dividends_monthly", "winners_losers", "details"):
+    for endpoint in (
+        "growth",
+        "allocation",
+        "asset_growth",
+        "dividends_monthly",
+        "winners_losers",
+        "details",
+    ):
         cache.delete(_analytics_cache_key(user.id, endpoint))
+
 
 try:
     from django_ratelimit.decorators import ratelimit
@@ -40,7 +50,9 @@ except ModuleNotFoundError:
     def ratelimit(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
+
 
 # Create your views here.
 @login_required(login_url="login")
@@ -55,6 +67,7 @@ def _client_ip(request):
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR", "")
 
+
 # Login views
 @ratelimit(key="ip", rate="20/m", method="POST", block=False)
 @ratelimit(key="post:username", rate="8/m", method="POST", block=False)
@@ -66,9 +79,14 @@ def login_view(request):
                 _client_ip(request),
                 request.POST.get("username", ""),
             )
-            return render(request, "portfolio/login.html", {
-                "message": "Too many login attempts. Please wait a minute and try again."
-            }, status=429)
+            return render(
+                request,
+                "portfolio/login.html",
+                {
+                    "message": "Too many login attempts. Please wait a minute and try again."
+                },
+                status=429,
+            )
 
         # Attempt to sign user in
         username = request.POST["username"]
@@ -80,15 +98,19 @@ def login_view(request):
             login(request, user)
             return HttpResponseRedirect(reverse("index"))
         else:
-            return render(request, "portfolio/login.html", {
-                "message": "Invalid username and/or password."
-            })
+            return render(
+                request,
+                "portfolio/login.html",
+                {"message": "Invalid username and/or password."},
+            )
     else:
         return render(request, "portfolio/login.html")
-    
+
+
 def logout_view(request):
     logout(request)
     return HttpResponseRedirect(reverse("login"))
+
 
 @ratelimit(key="ip", rate="10/m", method="POST", block=False)
 def register(request):
@@ -102,9 +124,12 @@ def register(request):
                 _client_ip(request),
                 request.POST.get("username", ""),
             )
-            return render(request, "portfolio/register.html", {
-                "message": "Too many signup attempts. Please wait and try again."
-            }, status=429)
+            return render(
+                request,
+                "portfolio/register.html",
+                {"message": "Too many signup attempts. Please wait and try again."},
+                status=429,
+            )
 
         username = request.POST["username"]
         email = request.POST["email"]
@@ -113,29 +138,38 @@ def register(request):
         password = request.POST["password"]
         confirmation = request.POST["confirmation"]
         if password != confirmation:
-            return render(request, "portfolio/register.html", {
-                "message": "Passwords must match."
-            })
+            return render(
+                request, "portfolio/register.html", {"message": "Passwords must match."}
+            )
 
         # Attempt to create new user
         try:
             user = User.objects.create_user(username, email, password)
             user.save()
         except IntegrityError:
-            return render(request, "portfolio/register.html", {
-                "message": "Username already taken."
-            })
+            return render(
+                request,
+                "portfolio/register.html",
+                {"message": "Username already taken."},
+            )
         login(request, user)
         return HttpResponseRedirect(reverse("index"))
     else:
         return render(request, "portfolio/register.html")
-    
+
+
 # Transaction views
 @login_required
 def transactions(request):
     if request.method == "GET":
-        transactions = (Transaction.objects.filter(user=request.user).select_related("asset").order_by("-timestamp"))
-        return JsonResponse({"transactions": [transaction.serialize() for transaction in transactions]})
+        transactions = (
+            Transaction.objects.filter(user=request.user)
+            .select_related("asset")
+            .order_by("-timestamp")
+        )
+        return JsonResponse(
+            {"transactions": [transaction.serialize() for transaction in transactions]}
+        )
 
     if request.method == "POST":
         data = json.loads(request.body or "{}")
@@ -173,10 +207,13 @@ def transactions(request):
         invalidate_analytics_cache(request.user)
         return JsonResponse(transaction.serialize(), status=201)
 
+
 @login_required
 def transaction(request, transaction_id):
     try:
-        transaction = Transaction.objects.select_related("asset").get(id=transaction_id, user=request.user)
+        transaction = Transaction.objects.select_related("asset").get(
+            id=transaction_id, user=request.user
+        )
     except Transaction.DoesNotExist:
         return JsonResponse({"error": "Transaction not found"}, status=404)
 
@@ -192,7 +229,9 @@ def transaction(request, transaction_id):
 
         if "asset_id" in data:
             try:
-                transaction.asset = Asset.objects.get(id=data["asset_id"], user=request.user)
+                transaction.asset = Asset.objects.get(
+                    id=data["asset_id"], user=request.user
+                )
             except Asset.DoesNotExist:
                 return JsonResponse({"error": "Asset not found"}, status=404)
 
@@ -228,24 +267,26 @@ def assets(request):
 
         if query:
             assets = assets.filter(
-                Q(ticker__icontains=query) |
-                Q(name__icontains=query) |
-                Q(short_name__icontains=query) |
-                Q(data_symbol__icontains=query)
+                Q(ticker__icontains=query)
+                | Q(name__icontains=query)
+                | Q(short_name__icontains=query)
+                | Q(data_symbol__icontains=query)
             )
 
         asset_list = []
         for asset in assets[:50]:
-            asset_list.append({
-                "id": asset.id,
-                "ticker": asset.ticker,
-                "name": asset.name,
-                "short_name": asset.short_name,
-                "asset_type": asset.asset_type,
-                "exchange": asset.exchange,
-                "currency": asset.currency,
-                "data_symbol": asset.data_symbol,
-            })
+            asset_list.append(
+                {
+                    "id": asset.id,
+                    "ticker": asset.ticker,
+                    "name": asset.name,
+                    "short_name": asset.short_name,
+                    "asset_type": asset.asset_type,
+                    "exchange": asset.exchange,
+                    "currency": asset.currency,
+                    "data_symbol": asset.data_symbol,
+                }
+            )
 
         return JsonResponse({"assets": asset_list})
 
@@ -270,9 +311,12 @@ def assets(request):
 
         if not data_symbol:
             return JsonResponse({"error": "data_symbol is required"}, status=400)
-        
+
         if asset_type not in valid_types:
-            return JsonResponse({"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"}, status=400)
+            return JsonResponse(
+                {"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"},
+                status=400,
+            )
 
         try:
             asset = Asset.objects.create(
@@ -288,20 +332,26 @@ def assets(request):
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
         except IntegrityError:
-            return JsonResponse({"error": "Asset already exists for this account"}, status=400)
+            return JsonResponse(
+                {"error": "Asset already exists for this account"}, status=400
+            )
 
-        return JsonResponse({
-            "id": asset.id,
-            "ticker": asset.ticker,
-            "name": asset.name,
-            "short_name": asset.short_name,
-            "asset_type": asset.asset_type,
-            "exchange": asset.exchange,
-            "currency": asset.currency,
-            "data_symbol": asset.data_symbol,
-        }, status=201)
+        return JsonResponse(
+            {
+                "id": asset.id,
+                "ticker": asset.ticker,
+                "name": asset.name,
+                "short_name": asset.short_name,
+                "asset_type": asset.asset_type,
+                "exchange": asset.exchange,
+                "currency": asset.currency,
+                "data_symbol": asset.data_symbol,
+            },
+            status=201,
+        )
 
     return JsonResponse({"error": "GET or POST required"}, status=405)
+
 
 @login_required
 def asset(request, asset_id):
@@ -312,16 +362,18 @@ def asset(request, asset_id):
 
     # GET: detail
     if request.method == "GET":
-        return JsonResponse({
-            "id": asset.id,
-            "ticker": asset.ticker,
-            "name": asset.name,
-            "short_name": asset.short_name,
-            "asset_type": asset.asset_type,
-            "exchange": asset.exchange,
-            "currency": asset.currency,
-            "data_symbol": asset.data_symbol,
-        })
+        return JsonResponse(
+            {
+                "id": asset.id,
+                "ticker": asset.ticker,
+                "name": asset.name,
+                "short_name": asset.short_name,
+                "asset_type": asset.asset_type,
+                "exchange": asset.exchange,
+                "currency": asset.currency,
+                "data_symbol": asset.data_symbol,
+            }
+        )
 
     # PUT: update
     if request.method == "PUT":
@@ -340,11 +392,14 @@ def asset(request, asset_id):
 
         if "short_name" in data:
             asset.short_name = data["short_name"].strip()
-        
+
         if "asset_type" in data:
             next_type = data["asset_type"].strip().upper()
             if next_type not in set(Asset.AssetType.values):
-                return JsonResponse({"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"}, status=400)
+                return JsonResponse(
+                    {"error": "asset_type must be one of ETF, STOCK, ETC, CRYPTO"},
+                    status=400,
+                )
             asset.asset_type = next_type
 
         if "exchange" in data:
@@ -365,31 +420,34 @@ def asset(request, asset_id):
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
         except IntegrityError:
-            return JsonResponse({"error": "Asset already exists for this account"}, status=400)
+            return JsonResponse(
+                {"error": "Asset already exists for this account"}, status=400
+            )
 
         refresh_result = None
         if refresh_prices:
             refresh_result = refresh_asset_price_history(asset, user=request.user)
 
         invalidate_analytics_cache(request.user)
-        return JsonResponse({
-            "id": asset.id,
-            "ticker": asset.ticker,
-            "name": asset.name,
-            "short_name": asset.short_name,
-            "asset_type": asset.asset_type,
-            "exchange": asset.exchange,
-            "currency": asset.currency,
-            "data_symbol": asset.data_symbol,
-            "price_refresh": refresh_result,
-        })
+        return JsonResponse(
+            {
+                "id": asset.id,
+                "ticker": asset.ticker,
+                "name": asset.name,
+                "short_name": asset.short_name,
+                "asset_type": asset.asset_type,
+                "exchange": asset.exchange,
+                "currency": asset.currency,
+                "data_symbol": asset.data_symbol,
+                "price_refresh": refresh_result,
+            }
+        )
 
     # DELETE
     if request.method == "DELETE":
         if Transaction.objects.filter(asset=asset).exists():
             return JsonResponse(
-                {"error": "Cannot delete asset with existing transactions"},
-                status=400
+                {"error": "Cannot delete asset with existing transactions"}, status=400
             )
 
         asset.delete()
@@ -411,11 +469,13 @@ def refresh_asset_prices(request, asset_id):
 
     result = refresh_asset_price_history(asset, user=request.user)
     invalidate_analytics_cache(request.user)
-    return JsonResponse({
-        "asset_id": asset.id,
-        "data_symbol": asset.data_symbol,
-        "price_refresh": result,
-    })
+    return JsonResponse(
+        {
+            "asset_id": asset.id,
+            "data_symbol": asset.data_symbol,
+            "price_refresh": result,
+        }
+    )
 
 
 @login_required
@@ -423,12 +483,14 @@ def profile(request):
     user = request.user
 
     if request.method == "GET":
-        return JsonResponse({
-            "username": user.username,
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-        })
+        return JsonResponse(
+            {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            }
+        )
 
     if request.method == "PUT":
         try:
@@ -451,12 +513,14 @@ def profile(request):
         except ValidationError as error:
             return JsonResponse({"errors": error.message_dict}, status=400)
 
-        return JsonResponse({
-            "username": user.username,
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-        })
+        return JsonResponse(
+            {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            }
+        )
 
     return JsonResponse({"error": "GET or PUT required"}, status=405)
 
@@ -492,10 +556,14 @@ def profile_password(request):
         return JsonResponse({"error": "Current password is incorrect"}, status=400)
 
     if len(new_password) < 8:
-        return JsonResponse({"error": "New password must be at least 8 characters"}, status=400)
+        return JsonResponse(
+            {"error": "New password must be at least 8 characters"}, status=400
+        )
 
     if new_password != confirm_password:
-        return JsonResponse({"error": "New password and confirmation do not match"}, status=400)
+        return JsonResponse(
+            {"error": "New password and confirmation do not match"}, status=400
+        )
 
     request.user.set_password(new_password)
     request.user.save()
@@ -503,7 +571,9 @@ def profile_password(request):
 
     return JsonResponse({"message": "Password updated"})
 
+
 ### IMPORTING FROM CSV AND HELPER FUNCTIONS
+
 
 def _normalize_header(value):
     if value is None:
@@ -565,7 +635,9 @@ def import_data(request):
         return JsonResponse({"error": "POST required"}, status=405)
 
     if "file" not in request.FILES:
-        return JsonResponse({"error": "No file uploaded (field name should be 'file')"}, status=400)
+        return JsonResponse(
+            {"error": "No file uploaded (field name should be 'file')"}, status=400
+        )
 
     uploaded_file = request.FILES["file"]
     if not (uploaded_file.name or "").lower().endswith(".xlsx"):
@@ -589,13 +661,17 @@ def import_data(request):
     required = {"data_symbol", "txn_type", "timestamp"}
     missing = required - header_set
     if missing:
-        return JsonResponse({"error": f"Missing required columns: {sorted(list(missing))}"}, status=400)
+        return JsonResponse(
+            {"error": f"Missing required columns: {sorted(list(missing))}"}, status=400
+        )
 
     created_assets = 0
     created_transactions = 0
     row_errors = []
 
-    for excel_row_index, row_values in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+    for excel_row_index, row_values in enumerate(
+        sheet.iter_rows(min_row=2, values_only=True), start=2
+    ):
         row = dict(zip(headers, row_values))
 
         data_symbol = _clean_text(row.get("data_symbol"))
@@ -607,11 +683,21 @@ def import_data(request):
         div_amount = _clean_decimal(row.get("div_amount"))
 
         if not data_symbol or not txn_type:
-            row_errors.append({"row": excel_row_index, "error": "data_symbol and txn_type are required"})
+            row_errors.append(
+                {
+                    "row": excel_row_index,
+                    "error": "data_symbol and txn_type are required",
+                }
+            )
             continue
 
         if ts is None:
-            row_errors.append({"row": excel_row_index, "error": "timestamp must be unix seconds (e.g. 1610323200)"})
+            row_errors.append(
+                {
+                    "row": excel_row_index,
+                    "error": "timestamp must be unix seconds (e.g. 1610323200)",
+                }
+            )
             continue
 
         asset, was_created = Asset.objects.get_or_create(
@@ -623,7 +709,7 @@ def import_data(request):
                 "exchange": "",
                 "currency": "EUR",
                 "asset_type": Asset.AssetType.STOCK,
-            }
+            },
         )
         if was_created:
             created_assets += 1
@@ -644,11 +730,14 @@ def import_data(request):
         except Exception as e:
             row_errors.append({"row": excel_row_index, "error": str(e)})
 
-    return JsonResponse({
-        "created_transactions": created_transactions,
-        "created_assets": created_assets,
-        "row_errors": row_errors,
-    }, status=201)
+    return JsonResponse(
+        {
+            "created_transactions": created_transactions,
+            "created_assets": created_assets,
+            "row_errors": row_errors,
+        },
+        status=201,
+    )
 
 
 @login_required
@@ -668,26 +757,42 @@ def export_data(request):
     sheet = workbook.active
     sheet.title = "transactions"
 
-    headers = ["data_symbol", "txn_type", "quantity", "unit_price", "div_amount", "timestamp"]
+    headers = [
+        "data_symbol",
+        "txn_type",
+        "quantity",
+        "unit_price",
+        "div_amount",
+        "timestamp",
+    ]
     sheet.append(headers)
 
     transactions = (
-        Transaction.objects
-        .filter(user=request.user)
+        Transaction.objects.filter(user=request.user)
         .select_related("asset")
         .order_by("timestamp")
     )
 
     for transaction in transactions:
         unix_ts = int(transaction.timestamp.astimezone(dt_timezone.utc).timestamp())
-        sheet.append([
-            transaction.asset.data_symbol,
-            transaction.txn_type,
-            str(transaction.quantity) if transaction.quantity is not None else "",
-            str(transaction.unit_price) if transaction.unit_price is not None else "",
-            str(transaction.div_amount) if transaction.div_amount is not None else "",
-            unix_ts,
-        ])
+        sheet.append(
+            [
+                transaction.asset.data_symbol,
+                transaction.txn_type,
+                str(transaction.quantity) if transaction.quantity is not None else "",
+                (
+                    str(transaction.unit_price)
+                    if transaction.unit_price is not None
+                    else ""
+                ),
+                (
+                    str(transaction.div_amount)
+                    if transaction.div_amount is not None
+                    else ""
+                ),
+                unix_ts,
+            ]
+        )
 
     output = BytesIO()
     workbook.save(output)
@@ -704,6 +809,7 @@ def export_data(request):
 
 ### ANALYTICS
 
+
 @login_required
 def analytics_growth(request):
     if request.method != "GET":
@@ -712,7 +818,10 @@ def analytics_growth(request):
     try:
         from portfolio.services.analytics import growth_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     key = _analytics_cache_key(request.user.id, "growth")
     payload = cache.get(key)
@@ -730,7 +839,10 @@ def analytics_allocation(request):
     try:
         from portfolio.services.analytics import allocation_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     key = _analytics_cache_key(request.user.id, "allocation")
     payload = cache.get(key)
@@ -748,7 +860,10 @@ def analytics_asset_growth(request):
     try:
         from portfolio.services.analytics import asset_growth_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     key = _analytics_cache_key(request.user.id, "asset_growth")
     payload = cache.get(key)
@@ -766,7 +881,10 @@ def analytics_dividends_monthly(request):
     try:
         from portfolio.services.analytics import dividends_monthly_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     key = _analytics_cache_key(request.user.id, "dividends_monthly")
     payload = cache.get(key)
@@ -784,7 +902,10 @@ def analytics_winners_losers(request):
     try:
         from portfolio.services.analytics import winners_losers_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     period = request.GET.get("range", "M")
     key = _analytics_cache_key(request.user.id, f"winners_losers:{period}")
@@ -803,7 +924,10 @@ def analytics_details(request):
     try:
         from portfolio.services.analytics import details_payload
     except ModuleNotFoundError:
-        return JsonResponse({"error": "Analytics is unavailable because pandas is not installed"}, status=500)
+        return JsonResponse(
+            {"error": "Analytics is unavailable because pandas is not installed"},
+            status=500,
+        )
 
     key = _analytics_cache_key(request.user.id, "details")
     payload = cache.get(key)

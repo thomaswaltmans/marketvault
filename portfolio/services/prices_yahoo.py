@@ -31,13 +31,21 @@ def _repair_leading_plateau_series(series, min_plateau_days=20):
             break
 
     plateau_len = plateau_end + 1
-    if plateau_len < min_plateau_days or plateau_end >= len(values) - 5 or plateau_value <= 0:
+    if (
+        plateau_len < min_plateau_days
+        or plateau_end >= len(values) - 5
+        or plateau_value <= 0
+    ):
         return series
 
     future_median = None
     for start_idx in range(plateau_end + 1, len(values) - 4):
-        future_window = values[start_idx:start_idx + 5]
-        moved_count = sum(1 for value in future_window if abs(value - plateau_value) / plateau_value > 0.2)
+        future_window = values[start_idx : start_idx + 5]
+        moved_count = sum(
+            1
+            for value in future_window
+            if abs(value - plateau_value) / plateau_value > 0.2
+        )
         if moved_count < 3:
             continue
 
@@ -76,12 +84,17 @@ def _repair_constant_plateau_runs(series, min_plateau_days=20):
         run_len = run_end - run_start + 1
         plateau_value = values[run_start]
 
-        if run_len >= min_plateau_days and plateau_value > 0 and run_end < len(values) - 5:
+        if (
+            run_len >= min_plateau_days
+            and plateau_value > 0
+            and run_end < len(values) - 5
+        ):
             future_median = None
             for future_start in range(run_end + 1, len(values) - 4):
-                future_window = values[future_start:future_start + 5]
+                future_window = values[future_start : future_start + 5]
                 moved_count = sum(
-                    1 for value in future_window
+                    1
+                    for value in future_window
                     if abs(value - plateau_value) / plateau_value > 0.2
                 )
                 if moved_count < 3:
@@ -94,7 +107,7 @@ def _repair_constant_plateau_runs(series, min_plateau_days=20):
                     break
 
             if future_median is not None:
-                repaired.iloc[run_start:run_end + 1] = future_median
+                repaired.iloc[run_start : run_end + 1] = future_median
 
         run_start = idx
 
@@ -168,7 +181,9 @@ def _download_batch(symbols, start_date, end_date):
 
     downloaded = {}
     for symbol in symbols:
-        series = _extract_close_series(prices, requested_symbol=symbol, downloaded_symbol=symbol).dropna()
+        series = _extract_close_series(
+            prices, requested_symbol=symbol, downloaded_symbol=symbol
+        ).dropna()
         if not series.empty:
             downloaded[symbol] = series
     return downloaded
@@ -213,7 +228,11 @@ def download_close_prices(data_symbols, start_date, end_date):
                 series_by_symbol[symbol] = series
                 break
 
-    frames = [series_by_symbol[symbol].to_frame() for symbol in symbols if symbol in series_by_symbol]
+    frames = [
+        series_by_symbol[symbol].to_frame()
+        for symbol in symbols
+        if symbol in series_by_symbol
+    ]
     if not frames:
         return pd.DataFrame()
 

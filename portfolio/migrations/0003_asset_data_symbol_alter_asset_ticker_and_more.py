@@ -6,22 +6,24 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('portfolio', '0002_asset_transaction'),
+        ("portfolio", "0002_asset_transaction"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='asset',
-            name='data_symbol',
+            model_name="asset",
+            name="data_symbol",
             field=models.CharField(blank=True, max_length=30),
         ),
         migrations.AlterField(
-            model_name='asset',
-            name='ticker',
+            model_name="asset",
+            name="ticker",
             field=models.CharField(max_length=20),
         ),
         migrations.AddConstraint(
-            model_name='asset',
-            constraint=models.UniqueConstraint(fields=('ticker', 'exchange'), name='unique_ticker_exchange'),
+            model_name="asset",
+            constraint=models.UniqueConstraint(
+                fields=("ticker", "exchange"), name="unique_ticker_exchange"
+            ),
         ),
     ]

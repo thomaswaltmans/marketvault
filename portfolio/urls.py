@@ -7,25 +7,39 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("login", views.login_view, name="login"),
     path("logout", views.logout_view, name="logout"),
-
     # API Routes
     path("transactions", views.transactions, name="transactions"),
     path("transactions/<int:transaction_id>", views.transaction, name="transaction"),
     path("import", views.import_data, name="import"),
     path("export", views.export_data, name="export"),
-
-    path("assets", views.assets, name="assets"), 
-    path("assets/<int:asset_id>", views.asset, name="asset"), 
-    path("assets/<int:asset_id>/refresh-prices", views.refresh_asset_prices, name="asset-refresh-prices"),
-
+    path("assets", views.assets, name="assets"),
+    path("assets/<int:asset_id>", views.asset, name="asset"),
+    path(
+        "assets/<int:asset_id>/refresh-prices",
+        views.refresh_asset_prices,
+        name="asset-refresh-prices",
+    ),
     path("profile", views.profile, name="profile"),
     path("profile/password", views.profile_password, name="profile-password"),
-
     path("analytics/growth", views.analytics_growth, name="analytics-growth"),
-    path("analytics/allocation", views.analytics_allocation, name="analytics-allocation"),
-    path("analytics/asset-growth", views.analytics_asset_growth, name="analytics-asset-growth"),
-    path("analytics/dividends-monthly", views.analytics_dividends_monthly, name="analytics-dividends-monthly"),
-    path("analytics/winners-losers", views.analytics_winners_losers, name="analytics-winners-losers"),
+    path(
+        "analytics/allocation", views.analytics_allocation, name="analytics-allocation"
+    ),
+    path(
+        "analytics/asset-growth",
+        views.analytics_asset_growth,
+        name="analytics-asset-growth",
+    ),
+    path(
+        "analytics/dividends-monthly",
+        views.analytics_dividends_monthly,
+        name="analytics-dividends-monthly",
+    ),
+    path(
+        "analytics/winners-losers",
+        views.analytics_winners_losers,
+        name="analytics-winners-losers",
+    ),
     path("analytics/details", views.analytics_details, name="analytics-details"),
 ]
 

@@ -33,26 +33,49 @@ def _transactions_dataframe(user):
     Columns: timestamp, date, data_symbol, txn_type, quantity, unit_price, div_amount
     """
     transactions = (
-        Transaction.objects
-        .filter(user=user)
+        Transaction.objects.filter(user=user)
         .select_related("asset")
         .order_by("timestamp")
     )
 
     rows = []
     for transaction in transactions:
-        rows.append({
-            "timestamp": transaction.timestamp,
-            "date": transaction.timestamp.date(),
-            "data_symbol": transaction.asset.data_symbol,
-            "txn_type": transaction.txn_type,
-            "quantity": float(transaction.quantity) if transaction.quantity is not None else None,
-            "unit_price": float(transaction.unit_price) if transaction.unit_price is not None else None,
-            "div_amount": float(transaction.div_amount) if transaction.div_amount is not None else None,
-        })
+        rows.append(
+            {
+                "timestamp": transaction.timestamp,
+                "date": transaction.timestamp.date(),
+                "data_symbol": transaction.asset.data_symbol,
+                "txn_type": transaction.txn_type,
+                "quantity": (
+                    float(transaction.quantity)
+                    if transaction.quantity is not None
+                    else None
+                ),
+                "unit_price": (
+                    float(transaction.unit_price)
+                    if transaction.unit_price is not None
+                    else None
+                ),
+                "div_amount": (
+                    float(transaction.div_amount)
+                    if transaction.div_amount is not None
+                    else None
+                ),
+            }
+        )
 
     if not rows:
-        return pd.DataFrame(columns=["timestamp", "date", "data_symbol", "txn_type", "quantity", "unit_price", "div_amount"])
+        return pd.DataFrame(
+            columns=[
+                "timestamp",
+                "date",
+                "data_symbol",
+                "txn_type",
+                "quantity",
+                "unit_price",
+                "div_amount",
+            ]
+        )
 
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
@@ -79,10 +102,7 @@ def _holdings_timeseries(df):
 
     holdings = (
         trades.pivot_table(
-            index="date",
-            columns="data_symbol",
-            values="signed_qty",
-            aggfunc="sum"
+            index="date", columns="data_symbol", values="signed_qty", aggfunc="sum"
         )
         .fillna(0)
         .cumsum()
@@ -120,8 +140,12 @@ def _invested_timeseries(df):
     is_sell = df["txn_type"] == "SELL"
     is_div = df["txn_type"] == "DIV"
 
-    df.loc[is_buy, "cashflow"] = df.loc[is_buy, "quantity"] * df.loc[is_buy, "unit_price"]
-    df.loc[is_sell, "cashflow"] = -1 * df.loc[is_sell, "quantity"] * df.loc[is_sell, "unit_price"]
+    df.loc[is_buy, "cashflow"] = (
+        df.loc[is_buy, "quantity"] * df.loc[is_buy, "unit_price"]
+    )
+    df.loc[is_sell, "cashflow"] = (
+        -1 * df.loc[is_sell, "quantity"] * df.loc[is_sell, "unit_price"]
+    )
     df.loc[is_div, "cashflow"] = -1 * df.loc[is_div, "div_amount"]
 
     daily = df.groupby("date")["cashflow"].sum().sort_index().cumsum()
@@ -139,37 +163,61 @@ def _invested_timeseries(df):
 
 def _asset_insights(df, holdings, prices, asset_metadata=None):
     if df.empty or holdings.empty or prices.empty:
-        return {"best_performer": None, "worst_performer": None, "top_dividend_asset": None}
+        return {
+            "best_performer": None,
+            "worst_performer": None,
+            "top_dividend_asset": None,
+        }
 
     latest_holdings = holdings.iloc[-1]
     latest_prices = prices.ffill().iloc[-1].reindex(latest_holdings.index).fillna(0)
 
     open_holdings = latest_holdings[latest_holdings > 0]
     if open_holdings.empty:
-        return {"best_performer": None, "worst_performer": None, "top_dividend_asset": None}
+        return {
+            "best_performer": None,
+            "worst_performer": None,
+            "top_dividend_asset": None,
+        }
 
     open_symbols = open_holdings.index.tolist()
-    open_values = (open_holdings * latest_prices.reindex(open_symbols).fillna(0)).fillna(0)
+    open_values = (
+        open_holdings * latest_prices.reindex(open_symbols).fillna(0)
+    ).fillna(0)
 
     df_open = df[df["data_symbol"].isin(open_symbols)].copy()
     if df_open.empty:
-        return {"best_performer": None, "worst_performer": None, "top_dividend_asset": None}
+        return {
+            "best_performer": None,
+            "worst_performer": None,
+            "top_dividend_asset": None,
+        }
 
     df_open["cashflow_asset"] = 0.0
     is_buy = df_open["txn_type"] == "BUY"
     is_sell = df_open["txn_type"] == "SELL"
     is_div = df_open["txn_type"] == "DIV"
 
-    df_open.loc[is_buy, "cashflow_asset"] = df_open.loc[is_buy, "quantity"] * df_open.loc[is_buy, "unit_price"]
-    df_open.loc[is_sell, "cashflow_asset"] = -1 * df_open.loc[is_sell, "quantity"] * df_open.loc[is_sell, "unit_price"]
+    df_open.loc[is_buy, "cashflow_asset"] = (
+        df_open.loc[is_buy, "quantity"] * df_open.loc[is_buy, "unit_price"]
+    )
+    df_open.loc[is_sell, "cashflow_asset"] = (
+        -1 * df_open.loc[is_sell, "quantity"] * df_open.loc[is_sell, "unit_price"]
+    )
     df_open.loc[is_div, "cashflow_asset"] = -1 * df_open.loc[is_div, "div_amount"]
 
-    net_invested = df_open.groupby("data_symbol")["cashflow_asset"].sum().reindex(open_symbols).fillna(0)
+    net_invested = (
+        df_open.groupby("data_symbol")["cashflow_asset"]
+        .sum()
+        .reindex(open_symbols)
+        .fillna(0)
+    )
     roi_by_asset = pd.Series(index=open_symbols, dtype=float)
 
     valid_roi_mask = (net_invested > 0) & (open_values > 0)
     roi_by_asset.loc[valid_roi_mask] = (
-        (open_values.loc[valid_roi_mask] - net_invested.loc[valid_roi_mask]) / net_invested.loc[valid_roi_mask]
+        (open_values.loc[valid_roi_mask] - net_invested.loc[valid_roi_mask])
+        / net_invested.loc[valid_roi_mask]
     ) * 100
 
     best = None
@@ -272,7 +320,7 @@ def growth_payload(user):
         end_date=end_date,
         user=user,
     )
-    
+
     if prices.empty:
         # no price data => return empty series (or you could return holdings-only)
         return {
@@ -311,7 +359,9 @@ def growth_payload(user):
         .sum()
     )
     latest_value = float(total.iloc[-1]) if len(total) else 0.0
-    dividend_yield_ttm = ((float(ttm_dividends) / latest_value) * 100) if latest_value > 0 else None
+    dividend_yield_ttm = (
+        ((float(ttm_dividends) / latest_value) * 100) if latest_value > 0 else None
+    )
     insights = _asset_insights(df, holdings, prices, asset_metadata=asset_metadata)
 
     dates = [d.strftime("%Y-%m-%d") for d in total.index]
@@ -335,20 +385,40 @@ def allocation_payload(user):
     """
     df = _transactions_dataframe(user)
     if df.empty:
-        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
+        return {
+            "labels": [],
+            "values": [],
+            "asset_types": [],
+            "asset_names": [],
+            "asset_short_names": [],
+        }
 
     holdings = _holdings_timeseries(df)
     if holdings.empty:
-        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
+        return {
+            "labels": [],
+            "values": [],
+            "asset_types": [],
+            "asset_names": [],
+            "asset_short_names": [],
+        }
 
     last_holdings = holdings.iloc[-1]
     last_holdings = last_holdings[last_holdings > 0]
 
     if last_holdings.empty:
-        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
+        return {
+            "labels": [],
+            "values": [],
+            "asset_types": [],
+            "asset_names": [],
+            "asset_short_names": [],
+        }
 
     # pull prices for a small recent window and use last available
-    start_date = (timezone.now().date() - timezone.timedelta(days=30)).strftime("%Y-%m-%d")
+    start_date = (timezone.now().date() - timezone.timedelta(days=30)).strftime(
+        "%Y-%m-%d"
+    )
     end_date = (timezone.now().date() + timezone.timedelta(days=1)).strftime("%Y-%m-%d")
 
     prices = get_close_prices_cached(
@@ -359,17 +429,29 @@ def allocation_payload(user):
     )
 
     if prices.empty:
-        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
+        return {
+            "labels": [],
+            "values": [],
+            "asset_types": [],
+            "asset_names": [],
+            "asset_short_names": [],
+        }
 
     # latest prices
     prices.index = pd.to_datetime(prices.index.date)
     latest = prices.ffill().iloc[-1].reindex(last_holdings.index).fillna(0)
 
-    current_values = (last_holdings * latest)
+    current_values = last_holdings * latest
     current_values = current_values[current_values > 0]
 
     if current_values.empty:
-        return {"labels": [], "values": [], "asset_types": [], "asset_names": [], "asset_short_names": []}
+        return {
+            "labels": [],
+            "values": [],
+            "asset_types": [],
+            "asset_names": [],
+            "asset_short_names": [],
+        }
 
     type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
     asset_metadata = _asset_metadata_map(user, current_values.index.tolist())
@@ -386,16 +468,28 @@ def allocation_payload(user):
         for data_symbol, metadata in asset_metadata.items()
     }
 
-    allocation_rows = pd.DataFrame({
-        "data_symbol": current_values.index.tolist(),
-        "value": current_values.values,
-    })
-    allocation_rows["asset_type"] = allocation_rows["data_symbol"].map(type_map).fillna("STOCK")
+    allocation_rows = pd.DataFrame(
+        {
+            "data_symbol": current_values.index.tolist(),
+            "value": current_values.values,
+        }
+    )
+    allocation_rows["asset_type"] = (
+        allocation_rows["data_symbol"].map(type_map).fillna("STOCK")
+    )
     allocation_rows["asset_name"] = allocation_rows["data_symbol"].map(name_map)
-    allocation_rows["asset_name"] = allocation_rows["asset_name"].fillna(allocation_rows["data_symbol"])
-    allocation_rows["asset_short_name"] = allocation_rows["data_symbol"].map(short_name_map)
-    allocation_rows["asset_short_name"] = allocation_rows["asset_short_name"].fillna(allocation_rows["data_symbol"])
-    allocation_rows["type_rank"] = allocation_rows["asset_type"].map(type_priority).fillna(99)
+    allocation_rows["asset_name"] = allocation_rows["asset_name"].fillna(
+        allocation_rows["data_symbol"]
+    )
+    allocation_rows["asset_short_name"] = allocation_rows["data_symbol"].map(
+        short_name_map
+    )
+    allocation_rows["asset_short_name"] = allocation_rows["asset_short_name"].fillna(
+        allocation_rows["data_symbol"]
+    )
+    allocation_rows["type_rank"] = (
+        allocation_rows["asset_type"].map(type_priority).fillna(99)
+    )
 
     allocation_rows = allocation_rows.sort_values(
         by=["type_rank", "value"],
@@ -451,8 +545,12 @@ def asset_growth_payload(user):
     is_buy = df_cash["txn_type"] == "BUY"
     is_sell = df_cash["txn_type"] == "SELL"
     is_div = df_cash["txn_type"] == "DIV"
-    df_cash.loc[is_buy, "cashflow_asset"] = df_cash.loc[is_buy, "quantity"] * df_cash.loc[is_buy, "unit_price"]
-    df_cash.loc[is_sell, "cashflow_asset"] = -1 * df_cash.loc[is_sell, "quantity"] * df_cash.loc[is_sell, "unit_price"]
+    df_cash.loc[is_buy, "cashflow_asset"] = (
+        df_cash.loc[is_buy, "quantity"] * df_cash.loc[is_buy, "unit_price"]
+    )
+    df_cash.loc[is_sell, "cashflow_asset"] = (
+        -1 * df_cash.loc[is_sell, "quantity"] * df_cash.loc[is_sell, "unit_price"]
+    )
     df_cash.loc[is_div, "cashflow_asset"] = -1 * df_cash.loc[is_div, "div_amount"]
 
     invested_by_asset = (
@@ -475,15 +573,17 @@ def asset_growth_payload(user):
         if float(symbol_values.max()) <= 0 and float(symbol_invested.max()) <= 0:
             continue
 
-        series.append({
-            "symbol": symbol,
-            "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
-            "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
-            "name": asset_metadata.get(symbol, {}).get("name", symbol),
-            "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
-            "value": [float(x) for x in symbol_values.values],
-            "invested": [float(x) for x in symbol_invested.values],
-        })
+        series.append(
+            {
+                "symbol": symbol,
+                "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
+                "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
+                "name": asset_metadata.get(symbol, {}).get("name", symbol),
+                "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
+                "value": [float(x) for x in symbol_values.values],
+                "invested": [float(x) for x in symbol_invested.values],
+            }
+        )
 
     series.sort(
         key=lambda item: (
@@ -512,9 +612,7 @@ def dividends_monthly_payload(user):
 
     divs["div_amount"] = divs["div_amount"].fillna(0.0)
     monthly = (
-        divs.groupby(pd.Grouper(key="date", freq="ME"))["div_amount"]
-        .sum()
-        .sort_index()
+        divs.groupby(pd.Grouper(key="date", freq="ME"))["div_amount"].sum().sort_index()
     )
 
     if monthly.empty:
@@ -589,7 +687,10 @@ def details_payload(user):
         asset_info[a.data_symbol] = {
             "ticker": a.ticker or a.data_symbol,
             "name": (a.name.strip() if a.name else "") or a.ticker or a.data_symbol,
-            "short_name": (a.short_name.strip() if a.short_name else "") or (a.name.strip() if a.name else "") or a.ticker or a.data_symbol,
+            "short_name": (a.short_name.strip() if a.short_name else "")
+            or (a.name.strip() if a.name else "")
+            or a.ticker
+            or a.data_symbol,
             "exchange": a.exchange or "",
             "asset_type": a.asset_type,
         }
@@ -600,9 +701,18 @@ def details_payload(user):
     buy_df["cost"] = buy_df["quantity"] * buy_df["unit_price"]
     sell_df["proceeds"] = sell_df["quantity"] * sell_df["unit_price"]
 
-    total_bought = buy_df.groupby("data_symbol")["cost"].sum().reindex(open_symbols).fillna(0)
-    total_sold = sell_df.groupby("data_symbol")["proceeds"].sum().reindex(open_symbols).fillna(0)
-    total_dividends = div_df.groupby("data_symbol")["div_amount"].sum().reindex(open_symbols).fillna(0)
+    total_bought = (
+        buy_df.groupby("data_symbol")["cost"].sum().reindex(open_symbols).fillna(0)
+    )
+    total_sold = (
+        sell_df.groupby("data_symbol")["proceeds"].sum().reindex(open_symbols).fillna(0)
+    )
+    total_dividends = (
+        div_df.groupby("data_symbol")["div_amount"]
+        .sum()
+        .reindex(open_symbols)
+        .fillna(0)
+    )
 
     prices_aligned = prices.reindex(columns=open_symbols)
     latest_prices = prices_aligned.iloc[-1]
@@ -610,58 +720,86 @@ def details_payload(user):
     market_values = quantities * latest_prices.fillna(0)
     total_portfolio = float(market_values.sum())
 
-    ytd_start_prices = prices_aligned.apply(lambda col: col.dropna().iloc[0] if not col.dropna().empty else None)
+    ytd_start_prices = prices_aligned.apply(
+        lambda col: col.dropna().iloc[0] if not col.dropna().empty else None
+    )
 
     month_ago = pd.to_datetime(today - timezone.timedelta(days=30))
     prices_up_to_month = prices_aligned[prices_aligned.index <= month_ago]
-    month_prices = prices_up_to_month.iloc[-1] if not prices_up_to_month.empty else latest_prices
+    month_prices = (
+        prices_up_to_month.iloc[-1] if not prices_up_to_month.empty else latest_prices
+    )
 
     type_priority = {"ETF": 0, "STOCK": 1, "ETC": 2, "CRYPTO": 3}
     rows = []
     for symbol in open_symbols:
         qty = float(quantities.get(symbol, 0))
         cur_raw = latest_prices.get(symbol)
-        cur_price = float(cur_raw) if cur_raw is not None and pd.notna(cur_raw) else None
+        cur_price = (
+            float(cur_raw) if cur_raw is not None and pd.notna(cur_raw) else None
+        )
         ytd_raw = ytd_start_prices.get(symbol)
-        ytd_price = float(ytd_raw) if ytd_raw is not None and pd.notna(ytd_raw) else None
+        ytd_price = (
+            float(ytd_raw) if ytd_raw is not None and pd.notna(ytd_raw) else None
+        )
         month_raw = month_prices.get(symbol)
-        month_price = float(month_raw) if month_raw is not None and pd.notna(month_raw) else None
+        month_price = (
+            float(month_raw) if month_raw is not None and pd.notna(month_raw) else None
+        )
 
         market_val = float(market_values.get(symbol, 0))
         bought = float(total_bought.get(symbol, 0))
         sold = float(total_sold.get(symbol, 0))
         dividends = float(total_dividends.get(symbol, 0))
 
-        month_change = (cur_price - month_price) * qty if cur_price is not None and month_price is not None else None
-        month_change_pct = ((cur_price - month_price) / month_price * 100) if cur_price is not None and month_price is not None and month_price > 0 else None
-        ytd_pct = ((cur_price - ytd_price) / ytd_price * 100) if cur_price is not None and ytd_price is not None and ytd_price > 0 else None
+        month_change = (
+            (cur_price - month_price) * qty
+            if cur_price is not None and month_price is not None
+            else None
+        )
+        month_change_pct = (
+            ((cur_price - month_price) / month_price * 100)
+            if cur_price is not None and month_price is not None and month_price > 0
+            else None
+        )
+        ytd_pct = (
+            ((cur_price - ytd_price) / ytd_price * 100)
+            if cur_price is not None and ytd_price is not None and ytd_price > 0
+            else None
+        )
         total_pl = market_val + sold + dividends - bought
         total_pl_pct = (total_pl / bought * 100) if bought > 0 else None
-        pct_portfolio = (market_val / total_portfolio * 100) if total_portfolio > 0 else None
+        pct_portfolio = (
+            (market_val / total_portfolio * 100) if total_portfolio > 0 else None
+        )
 
         meta = asset_info.get(symbol, {})
-        rows.append({
-            "symbol": symbol,
-            "ticker": meta.get("ticker", symbol),
-            "name": meta.get("name", symbol),
-            "short_name": meta.get("short_name", symbol),
-            "exchange": meta.get("exchange", ""),
-            "asset_type": meta.get("asset_type", "STOCK"),
-            "quantity": qty,
-            "current_price": cur_price,
-            "market_value": market_val,
-            "pct_portfolio": pct_portfolio,
-            "month_change": month_change,
-            "month_change_pct": month_change_pct,
-            "ytd_pct": ytd_pct,
-            "total_bought": bought,
-            "total_sold": sold,
-            "total_dividends": dividends,
-            "total_pl": total_pl,
-            "total_pl_pct": total_pl_pct,
-        })
+        rows.append(
+            {
+                "symbol": symbol,
+                "ticker": meta.get("ticker", symbol),
+                "name": meta.get("name", symbol),
+                "short_name": meta.get("short_name", symbol),
+                "exchange": meta.get("exchange", ""),
+                "asset_type": meta.get("asset_type", "STOCK"),
+                "quantity": qty,
+                "current_price": cur_price,
+                "market_value": market_val,
+                "pct_portfolio": pct_portfolio,
+                "month_change": month_change,
+                "month_change_pct": month_change_pct,
+                "ytd_pct": ytd_pct,
+                "total_bought": bought,
+                "total_sold": sold,
+                "total_dividends": dividends,
+                "total_pl": total_pl,
+                "total_pl_pct": total_pl_pct,
+            }
+        )
 
-    rows.sort(key=lambda r: (type_priority.get(r["asset_type"], 99), -r["market_value"]))
+    rows.sort(
+        key=lambda r: (type_priority.get(r["asset_type"], 99), -r["market_value"])
+    )
 
     groups = []
     for asset_type, items in _groupby(rows, key=lambda r: r["asset_type"]):
@@ -697,7 +835,9 @@ def winners_losers_payload(user, period="M", limit=6):
     prices = get_close_prices_cached(
         data_symbols=open_symbols,
         start_date=window_holdings.index.min().strftime("%Y-%m-%d"),
-        end_date=(timezone.now().date() + timezone.timedelta(days=1)).strftime("%Y-%m-%d"),
+        end_date=(timezone.now().date() + timezone.timedelta(days=1)).strftime(
+            "%Y-%m-%d"
+        ),
         user=user,
     )
     if prices.empty:
@@ -723,18 +863,26 @@ def winners_losers_payload(user, period="M", limit=6):
         start_date = active_dates[0]
         start_price = pd.to_numeric(prices.at[start_date, symbol], errors="coerce")
         end_price = pd.to_numeric(prices.at[latest_date, symbol], errors="coerce")
-        if not pd.notna(start_price) or not pd.notna(end_price) or float(start_price) <= 0:
+        if (
+            not pd.notna(start_price)
+            or not pd.notna(end_price)
+            or float(start_price) <= 0
+        ):
             continue
 
-        return_pct = ((float(end_price) - float(start_price)) / float(start_price)) * 100
-        rows.append({
-            "symbol": symbol,
-            "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
-            "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
-            "name": asset_metadata.get(symbol, {}).get("name", symbol),
-            "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
-            "return_pct": float(return_pct),
-        })
+        return_pct = (
+            (float(end_price) - float(start_price)) / float(start_price)
+        ) * 100
+        rows.append(
+            {
+                "symbol": symbol,
+                "ticker": asset_metadata.get(symbol, {}).get("ticker", symbol),
+                "asset_type": asset_metadata.get(symbol, {}).get("asset_type", "STOCK"),
+                "name": asset_metadata.get(symbol, {}).get("name", symbol),
+                "short_name": asset_metadata.get(symbol, {}).get("short_name", symbol),
+                "return_pct": float(return_pct),
+            }
+        )
 
     if not rows:
         return {"period": period_label, "winners": [], "losers": []}

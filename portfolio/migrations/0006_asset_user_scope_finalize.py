@@ -44,7 +44,9 @@ def split_assets_per_user(apps, schema_editor):
                 exchange=asset.exchange,
                 data_symbol=asset.data_symbol,
             )
-            Transaction.objects.filter(asset_id=asset.id, user_id=user_id).update(asset_id=clone.id)
+            Transaction.objects.filter(asset_id=asset.id, user_id=user_id).update(
+                asset_id=clone.id
+            )
 
 
 class Migration(migrations.Migration):

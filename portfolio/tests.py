@@ -35,13 +35,15 @@ class PriceCacheGuardTests(TestCase):
             data_symbol="BBB.AS",
         )
 
-        self.index = pd.to_datetime([
-            "2026-03-10",
-            "2026-03-11",
-            "2026-03-12",
-            "2026-03-13",
-            "2026-03-16",
-        ])
+        self.index = pd.to_datetime(
+            [
+                "2026-03-10",
+                "2026-03-11",
+                "2026-03-12",
+                "2026-03-13",
+                "2026-03-16",
+            ]
+        )
 
         for dt, close in zip(self.index, [10, 11, 12, 13, 14]):
             PricePoint.objects.create(
@@ -104,13 +106,15 @@ class PriceFetchSchedulingTests(TestCase):
             data_symbol="AAA.AS",
         )
 
-        self.index = pd.to_datetime([
-            "2026-03-10",
-            "2026-03-11",
-            "2026-03-12",
-            "2026-03-13",
-            "2026-03-16",
-        ])
+        self.index = pd.to_datetime(
+            [
+                "2026-03-10",
+                "2026-03-11",
+                "2026-03-12",
+                "2026-03-13",
+                "2026-03-16",
+            ]
+        )
         for dt, close in zip(self.index, [10, 11, 12, 13, 14]):
             PricePoint.objects.create(asset=self.asset, date=dt.date(), close=close)
 
