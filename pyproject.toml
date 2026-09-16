@@ -5,8 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "Django>=5.0,<7.0",
     "pandas>=2.0",
-    "scipy>=1.17",
-    "yfinance>=0.2",
+    "yfinance[repair]>=0.2",
     "openpyxl>=3.1",
     "dj-database-url>=2.1",
     "gunicorn>=22.0",
