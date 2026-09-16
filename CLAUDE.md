@@ -65,7 +65,7 @@ Single Django app (`portfolio/`) with all models, views, and services in one pla
 
 **Models** (`portfolio/models.py`):
 - `User` — extends `AbstractUser`. Extra fields: `email_verified` (bool, default False) and `email_verification_token` (UUID, nullable). Partial unique constraint on `email` (non-empty only). `AUTH_USER_MODEL = "portfolio.User"`.
-- `Asset` — unique per user on `(user, ticker, exchange)` and `(user, data_symbol)`.
+- `Asset` — unique per user on `(user, ticker, exchange)` and `(user, data_symbol)`. Also carries `prices_covered_from` / `prices_fetched_at`, the price-cache freshness markers (see `prices_cache.py`).
 - `Transaction` — field-level validation: dividend txns use only `div_amount`; buy/sell use `quantity` + `unit_price` (mutually exclusive). `Transaction.save()` calls `full_clean()`, so validation always runs — never bypass with `update()` to skip it intentionally.
 - `PricePoint` — persistent price cache, one row per `(asset, date)`. Indexed on `(asset, date)` and `(date)`.
 
@@ -74,8 +74,12 @@ Single Django app (`portfolio/`) with all models, views, and services in one pla
 **Registration/email verification flow**: `register` creates the user with `email_verified=False`, sends a verification email, and redirects to `verify_pending.html` — it does **not** log the user in. `login_view` blocks login for unverified accounts. `verify_email` validates the UUID token, marks the user verified, and logs them in. `resend_verification` regenerates the token and resends the email without revealing whether the address exists.
 
 **Services**:
-- `portfolio/services/analytics.py` — five public functions: `growth_payload`, `allocation_payload`, `asset_growth_payload`, `dividends_monthly_payload`, `winners_losers_payload`. Each builds a pandas DataFrame from transactions, computes holdings/invested time series, fetches prices, and returns a plain dict for JSON serialisation.
-- `portfolio/services/prices_cache.py` — `get_close_prices_cached()` is the **only** entry point for price data. Loads from `PricePoint` DB first, fetches missing/stale data from Yahoo Finance with 3-retry backoff (0.5s / 1s / 2s), deduplicates by comparing downloaded series to detect Yahoo ticker collisions, and saves back to DB. `refresh_asset_price_history()` force-clears and re-downloads for one asset.
+- `portfolio/services/analytics.py` — six public functions: `growth_payload`, `allocation_payload`, `asset_growth_payload`, `dividends_monthly_payload`, `winners_losers_payload`, `details_payload`. Each builds a pandas DataFrame from transactions, computes holdings/invested time series, fetches prices, and returns a plain dict for JSON serialisation.
+- `portfolio/services/prices_cache.py` — `get_close_prices_cached()` is the **only** entry point for price data. Loads from `PricePoint` DB first, then decides per asset whether to fetch.
+  **Freshness is tracked by when a download was last *attempted*, not by how recent the newest close is** (`Asset.prices_fetched_at` + `PRICE_FRESHNESS`, 1 hour). A market-calendar test can never pass on weekends or holidays and re-downloads forever.
+  `Asset.prices_covered_from` records how far back that attempt reached, so a 30-day caller cannot mask a gap for a 5-year one. An asset that already has deep history only tops up the tail from its newest cached date.
+  Symbols sharing a window are downloaded in **one** batched request. Attempts are recorded even when they fail, so a delisted symbol costs one request per hour rather than one per page load.
+  `refresh_asset_price_history()` force-clears, resets both markers, and re-downloads for one asset — this is the way to bypass the freshness gate.
 - `portfolio/services/prices_yahoo.py` — thin wrapper around yfinance. Do not call yfinance directly anywhere else.
 
 **Caching**: Two layers. Django cache (in-memory for dev, file-based at `/tmp/marketvault_cache` for prod) caches analytics JSON for 5 minutes. `PricePoint` table is persistent price history that survives restarts.
@@ -100,7 +104,7 @@ Single-page app — one Django template (`portfolio/templates/portfolio/index.ht
 
 **Dark mode**: Set via `data-theme="dark"` on `<html>`. A flash-prevention inline script in `<head>` reads `localStorage` and sets the attribute before first paint. Toggle lives in the profile view.
 
-**Charts**: All use Plotly.js with `getBaseChartLayout()` — transparent backgrounds, y-axis on the right, horizontal gridlines only, no axis lines. Portfolio and asset growth charts use `buildColoredPortfolioTraces()` for the coloured line; invested capital is a dotted grey line. Dividend bars use `rgba(0, 150, 255, 0.7)`.
+**Charts**: Loaded from the **plotly-basic** CDN bundle (`index.html`), which ships only `scatter`, `bar` and `pie` — a third the size of full Plotly. Any other trace type (`scattergl`, `heatmap`, …) will silently fail to render; switch the bundle back if you need one. All charts use `getBaseChartLayout()` — transparent backgrounds, y-axis on the right, horizontal gridlines only, no axis lines. Portfolio and asset growth charts use `buildColoredPortfolioTraces()` for the coloured line; invested capital is a dotted grey line. Dividend bars use `rgba(0, 150, 255, 0.7)`.
 
 ### URL structure
 
@@ -124,7 +128,21 @@ Single-page app — one Django template (`portfolio/templates/portfolio/index.ht
 /analytics/asset-growth  → GET (cached)
 /analytics/dividends-monthly → GET (cached)
 /analytics/winners-losers    → GET (cached, period param)
+/analytics/details           → GET (cached)
 ```
+
+## Deployment (Railway)
+
+Builder is **Railpack**. `railway.json` defines the build, pre-deploy and start behaviour, and **config in code overrides the dashboard** — the Railway UI will keep displaying whatever command was set there before, so do not trust it.
+
+- build: `uv sync --locked --no-dev && uv run --no-dev python manage.py collectstatic --noinput`
+- pre-deploy: `uv run --no-dev python manage.py migrate --noinput` (a failure here aborts the deploy)
+- start: `Procfile` → `uv run --no-dev gunicorn marketvault.wsgi`
+
+`--no-dev` is required on every one of them: plain `uv run` re-syncs and pulls the dev group back into the image.
+If the runtime container ever cannot find `uv`, change the Procfile to call `.venv/bin/gunicorn` directly.
+
+`yfinance[repair]` — the extra matters. `prices_yahoo.py` downloads with `repair=True`, which yfinance implements via scikit-learn. Dropping the extra brings back a runtime `ModuleNotFoundError` that silently yields no prices for affected symbols.
 
 ## Key invariants — do not break these
 
@@ -132,6 +150,8 @@ Single-page app — one Django template (`portfolio/templates/portfolio/index.ht
 - **`get_close_prices_cached()` is the only entry point for price data.** Never call yfinance directly.
 - **`Transaction.save()` runs `full_clean()`** — validation is automatic on every save. Don't use bulk `update()` to bypass validation unless you explicitly intend to.
 - **All analytics logic stays in `portfolio/services/analytics.py`.** Views must not build DataFrames or compute holdings directly.
+- **Record the fetch attempt whenever `get_close_prices_cached()` runs a fetch job**, success or failure. Skipping it on failure makes dead symbols retry on every request.
+- **`refreshDashboardCharts()` must `await` the growth call before firing the other four.** They all need the same prices; running them together makes each one download the same symbols concurrently. This is load-bearing, not stylistic.
 
 ## Do not
 
@@ -144,6 +164,6 @@ Single-page app — one Django template (`portfolio/templates/portfolio/index.ht
 ## Tests
 
 - Location: `portfolio/tests.py`
-- Currently covers price cache deduplication logic (`PriceCacheGuardTests`)
+- Covers price cache deduplication (`PriceCacheGuardTests`) and fetch scheduling — freshness gating, wider-window refetch, tail-only fetches, failed-attempt recording, batched downloads (`PriceFetchSchedulingTests`)
 - Tests use `unittest.mock.patch` on `_download_with_retries` — no network calls in tests
 - Fixtures are created inline in `setUp()`, no fixture files
