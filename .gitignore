@@ -9,3 +9,4 @@ staticfiles/
 *.sqlite3
 data.json
 db.sqlite3.pricepoint-backup
+.ruff_cache/

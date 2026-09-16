@@ -1,1 +1,1 @@
-web: gunicorn marketvault.wsgi --log-file -
+web: uv run --no-dev gunicorn marketvault.wsgi --log-file -

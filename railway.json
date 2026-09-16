@@ -1,6 +1,9 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "uv sync --locked --no-dev && uv run --no-dev python manage.py collectstatic --noinput"
+  },
   "deploy": {
-    "preDeployCommand": ["python3 manage.py migrate --noinput"]
+    "preDeployCommand": ["uv run --no-dev python manage.py migrate --noinput"]
   }
 }

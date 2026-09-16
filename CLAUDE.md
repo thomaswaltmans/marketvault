@@ -4,30 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-```bash
-# Activate virtualenv first — always required
-source .venv/bin/activate
+Dependencies are managed with **uv**. `uv run` syncs the environment from `uv.lock`
+before executing, so there is no activate step and no manual install.
 
+```bash
 # Run dev server
-python3 manage.py runserver
+uv run python manage.py runserver
 
 # Apply migrations
-python3 manage.py migrate
+uv run python manage.py migrate
 
 # Create a new migration after model changes
-python3 manage.py makemigrations
+uv run python manage.py makemigrations
 
 # Run tests
-python3 manage.py test
+uv run python manage.py test
 
 # Run a single test
-python3 manage.py test portfolio.tests.TestClassName.test_method_name
+uv run python manage.py test portfolio.tests.TestClassName.test_method_name
 
 # Collect static files (production)
-python3 manage.py collectstatic --noinput
+uv run python manage.py collectstatic --noinput
+
+# Format and lint
+make format   # uv run black .
+make lint     # uv run ruff check .
 ```
 
-There is no linter or formatter configured.
+Dependency changes go in `pyproject.toml`, then `uv lock` to update `uv.lock`. Commit both.
+Dev-only tools live in the `dev` dependency group and are excluded from production by `--no-dev`.
+
+Tool config also lives in `pyproject.toml`: black targets `py313`; ruff rules are pinned to
+`E4, E7, E9, F, I` with migrations excluded.
 
 ## Environment variables
 
@@ -72,7 +80,7 @@ Single Django app (`portfolio/`) with all models, views, and services in one pla
 
 **Caching**: Two layers. Django cache (in-memory for dev, file-based at `/tmp/marketvault_cache` for prod) caches analytics JSON for 5 minutes. `PricePoint` table is persistent price history that survives restarts.
 
-**Excel import/export**: handled in views.py using openpyxl. Import validates `.xlsx` only, expects a unix timestamp column, auto-creates missing assets, and wraps the whole operation in `db_transaction`. Export mirrors the same schema.
+**Excel import/export**: handled in views.py using openpyxl. Import validates `.xlsx` only, expects a unix timestamp column, and auto-creates missing assets. Rows are saved individually and are **not** wrapped in a transaction: a failing row is collected into `row_errors` and reported, while the rows that succeeded stay committed. Export mirrors the same schema.
 
 ### Frontend
 
